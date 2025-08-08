@@ -1,4 +1,5 @@
-# /workspace/LiveTalking/ttsreal.py
+# 文件路径：/workspace/LiveTalking/ttsreal.py
+# defina_CRT_SCURE.NO-WARNING
 from __future__ import annotations
 import time
 import numpy as np
@@ -70,7 +71,7 @@ class BaseTTS:
         process_thread = Thread(target=self.process_tts, args=(quit_event,))
         process_thread.start()
     
-    def process_tts(self,quit_event):        
+    def process_tts(self,quit_event):         
         while not quit_event.is_set():
             try:
                 # [修改] 从队列中获取包含 tts_options 的完整元组
@@ -483,7 +484,7 @@ class TencentTTS(BaseTTS):
                     except:
                         end = time.perf_counter()
                         logger.info(f"tencent Time to first chunk: {end-start}s")
-                        first = False                      
+                        first = False                       
                 if chunk and self.state==State.RUNNING:
                     yield chunk
         except Exception as e:
@@ -520,25 +521,36 @@ class TencentTTS(BaseTTS):
 
 class DoubaoTTS(BaseTTS):
     def __init__(self, opt, parent):
+        # 【简介】初始化抖音豆包TTS客户端；自动根据 REF_FILE 决定集群（S_ 前缀→volcano_icl）
         super().__init__(opt, parent)
-        # 从配置中读取火山引擎参数
+        # 读取凭证（需提前 export DOUBAO_APPID / DOUBAO_TOKEN）
         self.appid = os.getenv("DOUBAO_APPID")
         self.token = os.getenv("DOUBAO_TOKEN")
-        _cluster = 'volcano_tts'
+
+        # 【关键修复】允许通过环境变量覆盖集群；若 REF_FILE 以 "S_" 开头（克隆声线），默认用 volcano_icl
+        ref = (opt.REF_FILE or "").strip()
+        env_cluster = os.getenv("DOUBAO_CLUSTER", "").strip()
+        if env_cluster:
+            _cluster = env_cluster
+        else:
+            _cluster = "volcano_icl" if ref.startswith("S_") else "volcano_tts"
+
+        # WebSocket 地址保持不变
         _host = "openspeech.bytedance.com"
         self.api_url = f"wss://{_host}/api/v1/tts/ws_binary"
-        
+
+        # 组装默认请求体（后面会在 doubao_voice 里覆写 voice_type / text / reqid）
         self.request_json = {
             "app": {
                 "appid": self.appid,
+                # 注意：这里的 token 字段不用填 access_token；真正的鉴权走 WS 头部 Authorization
                 "token": "access_token",
-                "cluster": _cluster
+                "cluster": _cluster,  # 这里使用上面推断/外部传入的集群
             },
-            "user": {
-                "uid": "xxx"
-            },
+            "user": { "uid": "xxx" },
             "audio": {
                 "voice_type": "xxx",
+                # 【说明】项目里按 PCM int16 解码流，所以保持 pcm 编码
                 "encoding": "pcm",
                 "rate": 16000,
                 "speed_ratio": 1.0,
@@ -549,10 +561,14 @@ class DoubaoTTS(BaseTTS):
                 "reqid": "xxx",
                 "text": "字节跳动语音合成。",
                 "text_type": "plain",
-                "operation": "xxx"
-            }
+                "operation": "xxx",
+            },
         }
-    
+
+        # 【可选健壮性日志】帮助定位未设置 token 的情况（避免出现 'Bearer;'）
+        if not self.token:
+            logger.warning("DoubaoTTS: DOUBAO_TOKEN 未设置，WS 将以 'Bearer;' 发送，可能导致无音频返回。")
+            
     # [新增] 专门为 DoubaoTTS 新增的 put_msg_txt 方法，用于解析 tts_options
     def put_msg_txt(self, msg, eventpoint=None, **tts_options):
         """覆盖父类方法，先把可映射的参数写入 self.request_json，再走父类逻辑"""
@@ -604,7 +620,7 @@ class DoubaoTTS(BaseTTS):
 
                     if message_type == 0xb:  # audio-only server response
                         if message_type_specific_flags == 0:  # no sequence number as ACK
-                            #print("                      Payload size: 0")
+                            #print("                         Payload size: 0")
                             continue
                         else:
                             if first:
