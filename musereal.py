@@ -111,158 +111,89 @@ def __mirror_index(size, index):
     else:
         return size - res - 1 
 
-@torch.no_grad()
-def inference(render_event,batch_size,input_latent_list_cycle,audio_feat_queue,audio_out_queue,res_frame_queue,
+    @torch.no_grad()
+    def inference(self,render_event,batch_size,input_latent_list_cycle,audio_feat_queue,audio_out_queue,res_frame_queue,
               vae, unet, pe,timesteps): #vae, unet, pe,timesteps
     
-    # vae, unet, pe = load_diffusion_model()
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # timesteps = torch.tensor([0], device=device)
-    # pe = pe.half()
-    # vae.vae = vae.vae.half()
-    # unet.model = unet.model.half()
-    
-    length = len(input_latent_list_cycle)
-    index = 0
-    count=0
-    counttime=0
-    logger.info('start inference')
-    while render_event.is_set():
-        starttime=time.perf_counter()
-        try:
-            whisper_chunks = audio_feat_queue.get(block=True, timeout=1)
-        except queue.Empty:
-            continue
-        is_all_silence=True
-        audio_frames = []
-        for _ in range(batch_size*2):
-            frame,type,eventpoint = audio_out_queue.get()
-            audio_frames.append((frame,type,eventpoint))
-            if type==0:
-                is_all_silence=False
-        if is_all_silence:
-            for i in range(batch_size):
-                res_frame_queue.put((None,__mirror_index(length,index),audio_frames[i*2:i*2+2]))
-                index = index + 1
-        else:
-            # print('infer=======')
-            t=time.perf_counter()
-            whisper_batch = np.stack(whisper_chunks)
-            latent_batch = []
-            for i in range(batch_size):
-                idx = __mirror_index(length,index+i)
-                latent = input_latent_list_cycle[idx]
-                latent_batch.append(latent)
-            latent_batch = torch.cat(latent_batch, dim=0)
-            
-            # for i, (whisper_batch,latent_batch) in enumerate(gen):
-            audio_feature_batch = torch.from_numpy(whisper_batch)
-            audio_feature_batch = audio_feature_batch.to(device=unet.device,
-                                                            dtype=unet.model.dtype)
-            audio_feature_batch = pe(audio_feature_batch)
-            latent_batch = latent_batch.to(dtype=unet.model.dtype)
-            # print('prepare time:',time.perf_counter()-t)
-            # t=time.perf_counter()
-
-            pred_latents = unet.model(latent_batch, 
-                                        timesteps, 
-                                        encoder_hidden_states=audio_feature_batch).sample
-            # print('unet time:',time.perf_counter()-t)
-            # t=time.perf_counter()
-            recon = vae.decode_latents(pred_latents)
-            # infer_inqueue.put((whisper_batch,latent_batch,sessionid))
-            # recon,outsessionid = infer_outqueue.get()
-            # if outsessionid != sessionid:
-            #     print('outsessionid:',outsessionid,' mysessionid:',sessionid)
-
-            # print('vae time:',time.perf_counter()-t)
-            #print('diffusion len=',len(recon))
-            counttime += (time.perf_counter() - t)
-            count += batch_size
-            #_totalframe += 1
-            if count>=100:
-                logger.info(f"------actual avg infer fps:{count/counttime:.4f}")
-                count=0
-                counttime=0
-            for i,res_frame in enumerate(recon):
-                #self.__pushmedia(res_frame,loop,audio_track,video_track)
-                res_frame_queue.put((res_frame,__mirror_index(length,index),audio_frames[i*2:i*2+2]))
-                index = index + 1
-            #print('total batch time:',time.perf_counter()-starttime)            
-    logger.info('musereal inference processor stop')
-
-class MuseReal(BaseReal):
-    @torch.no_grad()
-    def __init__(self, opt, model, avatar):
-        super().__init__(opt)
-        #self.opt = opt # shared with the trainer's opt to support in-place modification of rendering parameters.
-        # self.W = opt.W
-        # self.H = opt.H
-
-        self.fps = opt.fps # 20 ms per frame
-
-        self.batch_size = opt.batch_size
-        self.idx = 0
-        self.res_frame_queue = mp.Queue(self.batch_size*2)
-
-        self.vae, self.unet, self.pe, self.timesteps, self.audio_processor = model
-        self.frame_list_cycle,self.mask_list_cycle,self.coord_list_cycle,self.mask_coords_list_cycle, self.input_latent_list_cycle = avatar
-        #self.__loadavatar()
-
-        self.asr = MuseASR(opt,self,self.audio_processor)
-        self.asr.warm_up()
+        # vae, unet, pe = load_diffusion_model()
+        # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # timesteps = torch.tensor([0], device=device)
+        # pe = pe.half()
+        # vae.vae = vae.vae.half()
+        # unet.model = unet.model.half()
         
-        self.render_event = mp.Event()
+        length = len(input_latent_list_cycle)
+        index = 0
+        count=0
+        counttime=0
+        logger.info('start inference')
+        while render_event.is_set():
+            starttime=time.perf_counter()
+            try:
+                whisper_chunks = audio_feat_queue.get(block=True, timeout=1)
+            except queue.Empty:
+                continue
+            is_all_silence=True
+            audio_frames = []
+            for _ in range(batch_size*2):
+                frame,type,eventpoint = audio_out_queue.get()
+                audio_frames.append((frame,type,eventpoint))
+                if type==0:
+                    is_all_silence=False
+            if is_all_silence:
+                for i in range(batch_size):
+                    res_frame_queue.put((None,__mirror_index(length,index),audio_frames[i*2:i*2+2]))
+                    index = index + 1
+            else:
+                # print('infer=======')
+                t=time.perf_counter()
+                whisper_batch = np.stack(whisper_chunks)
+                latent_batch = []
+                for i in range(batch_size):
+                    idx = __mirror_index(length,index+i)
+                    latent = input_latent_list_cycle[idx]
+                    latent_batch.append(latent)
+                latent_batch = torch.cat(latent_batch, dim=0)
+                
+                # for i, (whisper_batch,latent_batch) in enumerate(gen):
+                audio_feature_batch = torch.from_numpy(whisper_batch)
+                audio_feature_batch = audio_feature_batch.to(device=unet.device,
+                                                                dtype=unet.model.dtype)
+                audio_feature_batch = pe(audio_feature_batch)
+                latent_batch = latent_batch.to(dtype=unet.model.dtype)
+                # print('prepare time:',time.perf_counter()-t)
+                # t=time.perf_counter()
 
-    def __del__(self):
-        logger.info(f'musereal({self.sessionid}) delete')
-    
+                pred_latents = unet.model(latent_batch, 
+                                            timesteps, 
+                                            encoder_hidden_states=audio_feature_batch).sample
+                # print('unet time:',time.perf_counter()-t)
+                # t=time.perf_counter()
+                recon = vae.decode_latents(pred_latents)
+                # infer_inqueue.put((whisper_batch,latent_batch,sessionid))
+                # recon,outsessionid = infer_outqueue.get()
+                # if outsessionid != sessionid:
+                #     print('outsessionid:',outsessionid,' mysessionid:',sessionid)
 
-    def __mirror_index(self, index):
-        size = len(self.coord_list_cycle)
-        turn = index // size
-        res = index % size
-        if turn % 2 == 0:
-            return res
-        else:
-            return size - res - 1  
+                # print('vae time:',time.perf_counter()-t)
+                #print('diffusion len=',len(recon))
+                counttime += (time.perf_counter() - t)
+                count += batch_size
+                #_totalframe += 1
+                if count>=100:
+                    current_time = time.time()
+                    if current_time - self.last_log_time_fps > 30:
+                        logger.info(f"------actual avg infer fps:{count/counttime:.4f}")
+                        self.last_log_time_fps = current_time
+                    count=0
+                    counttime=0
+                for i,res_frame in enumerate(recon):
+                    #self.__pushmedia(res_frame,loop,audio_track,video_track)
+                    res_frame_queue.put((res_frame,__mirror_index(length,index),audio_frames[i*2:i*2+2]))
+                    index = index + 1
+                #print('total batch time:',time.perf_counter()-starttime)            
+        logger.info('musereal inference processor stop')
 
-    def __warm_up(self): 
-        self.asr.run_step()
-        whisper_chunks = self.asr.get_next_feat()
-        whisper_batch = np.stack(whisper_chunks)
-        latent_batch = []
-        for i in range(self.batch_size):
-            idx = self.__mirror_index(self.idx+i)
-            latent = self.input_latent_list_cycle[idx]
-            latent_batch.append(latent)
-        latent_batch = torch.cat(latent_batch, dim=0)
-        logger.info('infer=======')
-        # for i, (whisper_batch,latent_batch) in enumerate(gen):
-        audio_feature_batch = torch.from_numpy(whisper_batch)
-        audio_feature_batch = audio_feature_batch.to(device=self.unet.device,
-                                                        dtype=self.unet.model.dtype)
-        audio_feature_batch = self.pe(audio_feature_batch)
-        latent_batch = latent_batch.to(dtype=self.unet.model.dtype)
-
-        pred_latents = self.unet.model(latent_batch, 
-                                    self.timesteps, 
-                                    encoder_hidden_states=audio_feature_batch).sample
-        recon = self.vae.decode_latents(pred_latents)
-      
-
-    def paste_back_frame(self,pred_frame,idx:int):
-        bbox = self.coord_list_cycle[idx]
-        ori_frame = copy.deepcopy(self.frame_list_cycle[idx])
-        x1, y1, x2, y2 = bbox
-
-        res_frame = cv2.resize(pred_frame.astype(np.uint8),(x2-x1,y2-y1))
-        mask = self.mask_list_cycle[idx]
-        mask_crop_box = self.mask_coords_list_cycle[idx]
-
-        combine_frame = get_image_blending(ori_frame,res_frame,bbox,mask,mask_crop_box)
-        return combine_frame
-            
     def render(self,quit_event,loop=None,audio_track=None,video_track=None):
         #if self.opt.asr:
         #     self.asr.warm_up()
@@ -273,7 +204,7 @@ class MuseReal(BaseReal):
         process_thread.start()
 
         self.render_event.set() #start infer process render
-        Thread(target=inference, args=(self.render_event,self.batch_size,self.input_latent_list_cycle,
+        Thread(target=self.inference, args=(self.render_event,self.batch_size,self.input_latent_list_cycle,
                                            self.asr.feat_queue,self.asr.output_queue,self.res_frame_queue,
                                            self.vae, self.unet, self.pe,self.timesteps)).start() #mp.Process
         count=0
@@ -293,7 +224,10 @@ class MuseReal(BaseReal):
             #     count=0
             #     totaltime=0
             if video_track and video_track._queue.qsize()>=1.5*self.opt.batch_size:
-                logger.debug('sleep qsize=%d',video_track._queue.qsize())
+                current_time = time.time()
+                if current_time - self.last_log_time_qsize > 30:
+                    logger.debug('sleep qsize=%d',video_track._queue.qsize())
+                    self.last_log_time_qsize = current_time
                 time.sleep(0.04*video_track._queue.qsize()*0.8)
             # if video_track._queue.qsize()>=5:
             #     print('sleep qsize=',video_track._queue.qsize())

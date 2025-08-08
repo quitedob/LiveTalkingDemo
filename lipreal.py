@@ -154,7 +154,10 @@ def inference(quit_event,batch_size,face_list_cycle,audio_feat_queue,audio_out_q
             count += batch_size
             #_totalframe += 1
             if count>=100:
-                logger.info(f"------actual avg infer fps:{count/counttime:.4f}")
+                current_time = time.time()
+                if current_time - self.last_log_time_fps > 30:
+                    logger.info(f"------actual avg infer fps:{count/counttime:.4f}")
+                    self.last_log_time_fps = current_time
                 count=0
                 counttime=0
             for i,res_frame in enumerate(pred):
@@ -228,7 +231,10 @@ class LipReal(BaseReal):
             #     print('sleep qsize=',video_track._queue.qsize())
             #     time.sleep(0.04*video_track._queue.qsize()*0.8)
             if video_track and video_track._queue.qsize()>=5:
-                logger.debug('sleep qsize=%d',video_track._queue.qsize())
+                current_time = time.time()
+                if current_time - self.last_log_time_qsize > 30:
+                    logger.debug('sleep qsize=%d',video_track._queue.qsize())
+                    self.last_log_time_qsize = current_time
                 time.sleep(0.04*video_track._queue.qsize()*0.8)
                 
             # delay = _starttime+_totalframe*0.04-time.perf_counter() #40ms

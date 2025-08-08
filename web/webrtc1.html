@@ -3,399 +3,595 @@
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WebRTC 虚拟人交互</title>
+    <title>数字人 RAG 交互平台</title>
+    <script src="client.js"></script>
     <style>
         :root {
-            --background-color: #f0f2f5;
-            --card-background-color: #ffffff;
-            --primary-color: #007aff;
-            --primary-hover-color: #005bb5;
-            --secondary-color: #e5e5ea;
-            --secondary-hover-color: #dcdcdc;
-            --text-color: #1d1d1f;
-            --border-color: #d1d1d6;
-            --red-color: #ff3b30;
-            --green-color: #34c759;
-            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --bg-color: #f7f9fc;
+            --card-bg: #ffffff;
+            --primary-color: #1a73e8;
+            --primary-hover: #1867cf;
+            --text-color: #202124;
+            --subtle-text: #5f6368;
+            --border-color: #dadce0;
+            --success-color: #1e8e3e;
+            --error-color: #d93025;
+            --font-family: 'Google Sans', 'Noto Sans SC', 'Roboto', 'Helvetica Neue', sans-serif;
+            --border-radius: 8px;
+            --shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 2px 6px 2px rgba(60,64,67,0.15);
         }
-
         body {
             font-family: var(--font-family);
-            background-color: var(--background-color);
+            background-color: var(--bg-color);
             color: var(--text-color);
+            margin: 0;
+            padding: 24px;
             display: flex;
             justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
-            box-sizing: border-box;
+            align-items: flex-start;
         }
-
-        .container {
+        .main-container {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 24px;
             width: 100%;
-            max-width: 700px;
-            background-color: var(--card-background-color);
-            border-radius: 20px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            max-width: 1200px;
+        }
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
             padding: 24px;
             display: flex;
             flex-direction: column;
             gap: 20px;
         }
-
-        h2 {
-            text-align: center;
-            margin: 0 0 10px 0;
-            font-size: 24px;
-            font-weight: 600;
+        h2, h3 {
+            margin: 0;
+            font-weight: 500;
         }
+        h2 { font-size: 22px; }
+        h3 { font-size: 18px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 10px; }
 
         .video-container {
-            width: 100%;
             background-color: #000;
-            border-radius: 12px;
+            border-radius: var(--border-radius);
             overflow: hidden;
             position: relative;
         }
-        
+        /* 直接对目标 video 元素进行样式设置 */
         #video {
             width: 100%;
             display: block;
         }
 
-        .controls {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-
+        .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         button {
             font-family: var(--font-family);
-            padding: 12px 18px;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
+            padding: 10px 16px;
+            border: 1px solid transparent;
+            border-radius: var(--border-radius);
+            font-size: 14px;
             font-weight: 500;
             cursor: pointer;
-            transition: background-color 0.2s ease, transform 0.1s ease;
+            transition: all 0.2s ease;
         }
-        
-        button:active {
-            transform: scale(0.98);
-        }
-        
-        button:disabled {
-            background-color: var(--secondary-color);
-            cursor: not-allowed;
-            color: #8e8e93;
-        }
+        button:disabled { cursor: not-allowed; opacity: 0.6; }
+        .btn-primary { background-color: var(--primary-color); color: white; }
+        .btn-primary:not(:disabled):hover { background-color: var(--primary-hover); }
+        .btn-secondary { background-color: transparent; color: var(--primary-color); border-color: var(--border-color); }
+        .btn-secondary:not(:disabled):hover { background-color: rgba(26, 115, 232, 0.05); }
+        .btn-danger { background-color: var(--error-color); color: white; }
+        .btn-danger:not(:disabled):hover { background-color: #a52714; }
 
-        .btn-primary {
-            background-color: var(--primary-color);
-            color: white;
-        }
-        .btn-primary:not(:disabled):hover {
-            background-color: var(--primary-hover-color);
-        }
-
-        .btn-secondary {
-            background-color: var(--secondary-color);
-            color: var(--text-color);
-        }
-        .btn-secondary:not(:disabled):hover {
-            background-color: var(--secondary-hover-color);
-        }
-        
-        .btn-danger {
-            background-color: var(--red-color);
-            color: white;
-        }
-
-        .btn-recording {
-            background-color: var(--red-color);
-            color: white;
-        }
-        
-        .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        
-        textarea {
-            font-family: var(--font-family);
+        .form-group { display: flex; flex-direction: column; gap: 8px; }
+        label { font-size: 14px; font-weight: 500; color: var(--subtle-text); }
+        input[type="text"], select, textarea {
             width: 100%;
-            height: 60px;
             padding: 10px;
-            border-radius: 10px;
+            border-radius: var(--border-radius);
             border: 1px solid var(--border-color);
-            font-size: 16px;
-            resize: vertical;
+            font-size: 14px;
             box-sizing: border-box;
         }
-
-        #stop, #stop-record {
-            display: none;
-        }
+        textarea { resize: vertical; min-height: 80px; }
         
-        .status-light {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background-color: var(--red-color);
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            animation: pulse 2s infinite;
-        }
+        .switch-container { display: flex; align-items: center; justify-content: space-between; }
+        .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--primary-color); }
+        input:checked + .slider:before { transform: translateX(20px); }
 
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(255, 59, 48, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+        .chat-area { flex-grow: 1; display: flex; flex-direction: column; gap: 16px; }
+        #chat-output {
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 12px;
+            min-height: 150px;
+            flex-grow: 1;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 14px;
+            line-height: 1.6;
         }
-
+        .status-bar {
+            font-size: 12px; color: var(--subtle-text); padding: 8px; border-radius: var(--border-radius); background-color: var(--bg-color);
+        }
+        .toast {
+            position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: var(--border-radius); color: white; font-weight: 500; z-index: 1000;
+            opacity: 0; transition: opacity 0.5s, transform 0.5s; transform: translateY(-20px);
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { background-color: var(--success-color); }
+        .toast.error { background-color: var(--error-color); }
     </style>
 </head>
 <body>
-
-<input id="use-stun" type="checkbox" style="display: none;" checked/>
-<input type="hidden" id="sessionid" value="">
-
-<div class="container">
-    <h2>虚拟人实时交互</h2>
+    <input id="use-stun" type="checkbox" style="display: none;" checked>
+    <input type="hidden" id="sessionid">
     
+    <!-- 隐藏的 audio 元素，用于接收音频流 -->
+    <audio id="audio" autoplay></audio>
+
+    <div class="main-container">
+        <!-- 左侧：视频与控制 -->
+        <div class="card">
+            <h2>数字人预览</h2>
     <div class="video-container">
-        <video id="video" autoplay="true" playsinline="true"></video>
-        <div id="recording-indicator" class="status-light" style="display: none;"></div>
+                <!-- 关键修复：直接将 client.js 需要的 video 元素放在这里 -->
+                <video id="video" autoplay playsinline></video>
     </div>
-    <audio id="audio" autoplay="true" style="display:none;"></audio>
-
-    <div class="controls">
+            <div class="button-group">
         <button id="start" class="btn-primary">开始连接</button>
-        <button id="stop" class="btn-danger">断开连接</button>
+                <button id="stop" class="btn-danger" style="display: none;">断开连接</button>
     </div>
 
-    <form id="text-chat-form" class="form-group">
-        <textarea id="message" placeholder="输入文本，让虚拟人说话...">测试文本</textarea>
-        <button type="submit" class="btn-primary">发送文本</button>
-    </form>
-    
-    <div class="controls">
-        <button id="start-record" class="btn-secondary">开始录音</button>
-        <button id="stop-record" class="btn-recording">停止录音</button>
+            <h3>文本/语音对话</h3>
+            <div class="form-group" style="border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 16px 0; margin-top:10px;">
+                <div class="switch-container">
+                    <label for="rag-mode-speak-switch">RAG 模式驱动</label>
+                    <label class="switch">
+                        <input type="checkbox" id="rag-mode-speak-switch">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="form-group" style="margin-top: 10px;">
+                    <label for="kb-speak-select">使用知识库</label>
+                    <select id="kb-speak-select">
+                        <option value="">无</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <textarea id="human-text" placeholder="输入文本，让虚拟人说话..."></textarea>
+                <button id="send-human-text" class="btn-secondary">发送文本并朗读</button>
+            </div>
+            <div class="button-group">
+                 <button id="start-record" class="btn-secondary">语音对话</button>
+                 <button id="stop-record" class="btn-danger" style="display: none;">停止录音</button>
     </div>
 </div>
 
-<script src="client.js"></script>
-<script type="text/javascript">
-    // --- 录音功能相关变量 ---
-    let mediaRecorder;
-    let audioChunks = [];
-    let session_id = null; // 用于存储会话ID
-    let checkSessionInterval = null; // 用于轮询检查 sessionid 的计时器
-
-    // --- DOM 元素获取 ---
-    const startButton = document.getElementById('start');
-    const stopButton = document.getElementById('stop');
-    const startRecordButton = document.getElementById('start-record');
-    const stopRecordButton = document.getElementById('stop-record');
-    const textChatForm = document.getElementById('text-chat-form');
-    const messageInput = document.getElementById('message');
-    const recordingIndicator = document.getElementById('recording-indicator');
-    const textChatButton = document.querySelector('#text-chat-form button');
-    const sessionInput = document.getElementById('sessionid'); // 获取隐藏输入框
-    
-    // --- 页面加载时初始化按钮状态 ---
-    function initializeUI() {
-        startRecordButton.disabled = true;
-        textChatButton.disabled = true;
-        stopButton.style.display = 'none';
-        startButton.style.display = 'block';
-        startButton.disabled = false;
-        messageInput.value = "你好，请介绍一下你自己。";
-    }
-    initializeUI();
-
-    // --- 关键改动2：重写事件监听器以直接调用 client.js 函数 ---
-    startButton.addEventListener('click', () => {
-        console.log("尝试开始连接...");
-        startButton.disabled = true; // 防止重复点击
-        startButton.textContent = '连接中...';
-
-        // 直接调用 client.js 的 start 函数，不进行任何包装
-        window.start();
-
-        // 设置一个计时器，轮询检查隐藏输入框中是否已填入 sessionid
-        let attempts = 0;
-        const maxAttempts = 400; // 最多检查10秒 (20 * 500ms)
-        checkSessionInterval = setInterval(() => {
-            attempts++;
-            // 检查 sessionid 是否有值
-            if (sessionInput.value && sessionInput.value !== "0") {
-                clearInterval(checkSessionInterval); // 停止轮询
-                session_id = parseInt(sessionInput.value, 10);
-                console.log('连接成功，Session ID:', session_id);
-                
-                // 更新UI
-                startButton.style.display = 'none';
-                stopButton.style.display = 'block';
-                startButton.textContent = '开始连接'; // 恢复文本
-
-                // 启用交互按钮
-                startRecordButton.disabled = false;
-                textChatButton.disabled = false;
-            } else if (attempts > maxAttempts) {
-                // 如果超时仍未获取到 sessionid，则认为连接失败
-                clearInterval(checkSessionInterval);
-                console.error('连接超时，未能获取 Session ID。');
-                alert('连接失败，请检查浏览器控制台或刷新页面重试。');
-                initializeUI(); // 恢复初始UI状态
-            }
-        }, 500); // 每500毫秒检查一次
-    });
-    
-    stopButton.addEventListener('click', () => {
-        // 直接调用 client.js 的 stop 函数
-        if(window.stop) window.stop();
-
-        console.log('连接已断开。');
-        session_id = null;
-        sessionInput.value = ""; // 清空隐藏输入框
-        if(checkSessionInterval) clearInterval(checkSessionInterval); // 确保轮询已停止
-
-        // 更新UI
-        initializeUI();
-        
-        // 如果正在录音，也一并停止
-        if (mediaRecorder && mediaRecorder.state !== "inactive") {
-            mediaRecorder.stop();
-        }
-        resetRecordingUI();
-    });
-
-    startRecordButton.addEventListener('click', () => {
-        if (!session_id) {
-            alert('请先点击“开始连接”建立会话！');
-            return;
-        }
-        startRecording();
-    });
-
-    stopRecordButton.addEventListener('click', () => {
-        if (mediaRecorder && mediaRecorder.state !== "inactive") {
-            mediaRecorder.stop();
-        }
-    });
-
-    textChatForm.addEventListener('submit', (event) => {
-        event.preventDefault();
-        if (!session_id) {
-            alert('请先点击“开始连接”建立会话！');
-            return;
-        }
-        const text = messageInput.value.trim();
-        if (text) {
-            sendTextToHuman(text);
-        }
-    });
-
-    // --- 功能函数 (录音和文本发送) ---
-    // 这部分函数无需修改，因为它们依赖的 session_id 变量现在能被正确赋值
-    async function startRecording() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
+        <!-- 右侧：RAG 与知识库 -->
+        <div class="card">
+            <h2>RAG 知识库交互</h2>
             
-            mediaRecorder.ondataavailable = event => {
-                audioChunks.push(event.data);
-            };
+            <div class="form-group">
+                <label for="chat-input">聊天输入 (不驱动数字人)</label>
+                <textarea id="chat-input" placeholder="在此输入您的问题进行测试..."></textarea>
+                <button id="send-chat" class="btn-primary">发送查询</button>
+            </div>
+             <div class="form-group">
+                <label for="chat-output">模型响应</label>
+                <div id="chat-output"></div>
+            </div>
 
-            mediaRecorder.onstop = sendAudioToServer;
-            mediaRecorder.start();
+            <h3>RAG 设置</h3>
+            <div class="switch-container">
+                <label for="rag-mode-switch">RAG 模式 (全局)</label>
+                <label class="switch">
+                    <input type="checkbox" id="rag-mode-switch">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="form-group">
+                <label for="system-prompt">系统提示词</label>
+                <textarea id="system-prompt"></textarea>
+                <button id="update-prompt" class="btn-secondary">更新提示词</button>
+            </div>
 
-            // 更新UI
-            startRecordButton.style.display = 'none';
-            stopRecordButton.style.display = 'block';
-            stopRecordButton.textContent = '正在录音... (点击停止)';
-            recordingIndicator.style.display = 'block';
+            <h3>知识库管理</h3>
+            <div class="form-group">
+                <label for="kb-select">当前知识库 (全局)</label>
+                <div style="display: flex; gap: 10px;">
+                    <select id="kb-select" style="flex-grow: 1;">
+                        <option value="">无</option>
+                    </select>
+                    <button id="delete-kb" class="btn-danger">删除</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="kb-name">新建知识库</label>
+                <input type="text" id="kb-name" placeholder="输入知识库名称 (3-20位英文/数字)">
+                <input type="file" id="kb-file">
+                <button id="create-kb" class="btn-secondary">创建并上传</button>
+            </div>
+            <div id="status-bar" class="status-bar" style="display: none;"></div>
+        </div>
+    </div>
+    
+    <div id="toast" class="toast"></div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // DOM 元素
+        const dom = {
+            // 媒体元素直接由 client.js 控制，无需在此处过多干预
+            video: document.getElementById('video'),
+            audio: document.getElementById('audio'),
+
+            sessionIdInput: document.getElementById('sessionid'),
+            startConnBtn: document.getElementById('start'),
+            stopConnBtn: document.getElementById('stop'),
+            
+            // 左侧交互
+            sendHumanTextBtn: document.getElementById('send-human-text'),
+            humanTextInput: document.getElementById('human-text'),
+            startRecordBtn: document.getElementById('start-record'),
+            stopRecordBtn: document.getElementById('stop-record'),
+            ragModeSpeakSwitch: document.getElementById('rag-mode-speak-switch'),
+            kbSpeakSelect: document.getElementById('kb-speak-select'),
+
+            // 右侧交互与配置
+            chatInput: document.getElementById('chat-input'),
+            sendChatBtn: document.getElementById('send-chat'),
+            chatOutput: document.getElementById('chat-output'),
+            ragModeSwitch: document.getElementById('rag-mode-switch'),
+            systemPrompt: document.getElementById('system-prompt'),
+            updatePromptBtn: document.getElementById('update-prompt'),
+            kbSelect: document.getElementById('kb-select'),
+            deleteKbBtn: document.getElementById('delete-kb'),
+            kbNameInput: document.getElementById('kb-name'),
+            kbFileInput: document.getElementById('kb-file'),
+            createKbBtn: document.getElementById('create-kb'),
+
+            statusBar: document.getElementById('status-bar'),
+            toast: document.getElementById('toast'),
+        };
+
+        // 状态变量
+        let state = {
+            sessionId: null,
+            isRecording: false,
+            mediaRecorder: null,
+            audioChunks: [],
+        };
+
+        // --- 工具函数 ---
+        function showToast(message, type = 'success') {
+            dom.toast.textContent = message;
+            dom.toast.className = `toast show ${type}`;
+            setTimeout(() => {
+                dom.toast.className = 'toast';
+            }, 3000);
+        }
+
+        function updateStatus(message, isLoading = false) {
+            if (message) {
+                dom.statusBar.style.display = 'block';
+                dom.statusBar.innerHTML = isLoading 
+                    ? `<div class="spinner"></div> ${message}`
+                    : message;
+            } else {
+                dom.statusBar.style.display = 'none';
+            }
+        }
+
+        // --- API 调用 ---
+        const api = {
+            async fetch(url, options = {}) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({error: '未知错误'}));
+                        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                    }
+                    return response;
+                } catch (error) {
+                    showToast(`请求失败: ${error.message}`, 'error');
+                    console.error('API Error:', error);
+                    throw error;
+                }
+            },
+            
+            getConfig: () => api.fetch('/config/get').then(res => res.json()),
+            getKbList: () => api.fetch('/kb/list').then(res => res.json()),
+            switchKb: (name) => api.fetch(`/kb/switch/${name}`, { method: 'POST' }),
+            deleteKb: (name) => api.fetch(`/kb/delete/${name}`, { method: 'DELETE' }),
+            createKb: (formData) => api.fetch('/kb/create', { method: 'POST', body: formData }),
+            getTaskStatus: (taskId) => api.fetch(`/kb/status/${taskId}`).then(res => res.json()),
+            updatePrompt: (prompt) => api.fetch('/config/prompt', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt}) }),
+            setRagMode: (use_rag) => api.fetch('/config/rag_mode', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({use_rag}) }),
+            ragChat: (query) => api.fetch('/rag/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({query}) }),
+            sendHumanText: (payload) => api.fetch('/human', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }),
+            sendHumanAudio: (formData) => api.fetch('/audio_chat', { method: 'POST', body: formData }),
+        };
+
+        // --- 核心功能 ---
+        async function initializeRAG() {
+            try {
+                const [config, kbList] = await Promise.all([api.getConfig(), api.getKbList()]);
+                
+                dom.ragModeSwitch.checked = config.use_rag;
+                dom.ragModeSpeakSwitch.checked = config.use_rag;
+                dom.systemPrompt.value = config.system_prompt;
+                
+                const kbOptions = '<option value="">无</option>' + kbList.knowledge_bases.map(kb => `<option value="${kb}">${kb}</option>`).join('');
+                dom.kbSelect.innerHTML = kbOptions;
+                dom.kbSpeakSelect.innerHTML = kbOptions;
+                
+                if (config.current_kb) {
+                    dom.kbSelect.value = config.current_kb;
+                    dom.kbSpeakSelect.value = config.current_kb;
+                }
 
         } catch (error) {
-            console.error('获取麦克风权限失败:', error);
-            alert('无法访问麦克风。请检查浏览器权限设置。');
+                console.error("初始化RAG配置失败:", error);
+                showToast("无法加载RAG配置", 'error');
+            }
         }
-    }
+        
+        async function handleCreateKb() {
+            const kbName = dom.kbNameInput.value.trim();
+            const file = dom.kbFileInput.files[0];
 
-    async function sendAudioToServer() {
-        if (audioChunks.length === 0) {
-            console.warn("没有录制到音频数据。");
-            resetRecordingUI();
+            if (!kbName.match(/^[a-zA-Z0-9]{3,20}$/)) {
+                showToast("知识库名称不合法 (3-20位英文/数字)", 'error');
+                return;
+            }
+            if (!file) {
+                showToast("请选择要上传的文件", 'error');
             return;
         }
         
-        stopRecordButton.textContent = '正在发送...';
-        stopRecordButton.disabled = true;
+            const formData = new FormData();
+            formData.append('kb_name', kbName);
+            formData.append('file', file);
+            
+            try {
+                const response = await api.createKb(formData);
+                const data = await response.json();
+                showToast('文件上传成功，后台处理中...');
+                pollTaskStatus(data.task_id);
+            } catch(e) { /* API handler already showed toast */ }
+        }
 
-        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-        const audioFile = new File([audioBlob], "recording.wav", { type: 'audio/wav' });
+        function pollTaskStatus(taskId) {
+            updateStatus(`任务 ${taskId}: 正在处理...`, true);
+            const interval = setInterval(async () => {
+                try {
+                    const status = await api.getTaskStatus(taskId);
+                    updateStatus(`任务 ${taskId}: ${status.message}`, status.status === 'processing');
+                    if (status.status === 'success') {
+                        clearInterval(interval);
+                        showToast(status.message, 'success');
+                        initializeRAG();
+                        updateStatus(null);
+                    } else if (status.status === 'failed') {
+                        clearInterval(interval);
+                        showToast(status.message, 'error');
+                        updateStatus(null);
+                    }
+                } catch (e) {
+                    clearInterval(interval);
+                    updateStatus(null);
+                }
+            }, 3000);
+        }
         
-        const formData = new FormData();
-        formData.append('file', audioFile);
-        formData.append('sessionid', session_id);
+        async function handleRagChat() {
+            const query = dom.chatInput.value.trim();
+            if (!query) return;
 
-        try {
-            // 使用新增的 /audio_chat 接口
-            const response = await fetch('/audio_chat', {
-                method: 'POST',
-                body: formData
-            });
+            dom.chatOutput.textContent = '';
+            dom.sendChatBtn.disabled = true;
 
-            if (!response.ok) throw new Error(`服务器响应错误: ${response.statusText}`);
-            const result = await response.json();
-            console.log('后端响应:', result);
+            try {
+                const response = await api.ragChat(query);
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
 
-        } catch (error) {
-            console.error('发送音频失败:', error);
-            alert('音频发送失败，请查看控制台获取更多信息。');
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); 
+                    
+                    for (const line of lines) {
+                        if (line.trim() === '') continue;
+                        try {
+                            const jsonData = JSON.parse(line);
+                            if (jsonData && jsonData.response) {
+                                dom.chatOutput.textContent += jsonData.response;
+                            }
+                        } catch (e) {
+                            console.warn("无法解析的JSON行:", line);
+                        }
+                    }
+                }
+                if (buffer.trim() !== '') {
+                     try {
+                        const jsonData = JSON.parse(buffer);
+                        if (jsonData && jsonData.response) {
+                            dom.chatOutput.textContent += jsonData.response;
+                        }
+                    } catch (e) {
+                        console.warn("无法解析的JSON行 (buffer):", buffer);
+                    }
+                }
+            } catch (e) {
+                dom.chatOutput.textContent = `查询失败: ${e.message}`;
         } finally {
-            resetRecordingUI();
+                dom.sendChatBtn.disabled = false;
+            }
         }
-    }
-    
-    async function sendTextToHuman(text) {
-        try {
-            // 使用 /human 接口发送文本
-            const response = await fetch('/human', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sessionid: session_id,
-                    type: 'chat', // 使用chat模式以调用LLM
-                    text: text,
-                    interrupt: true
-                })
-            });
-            if (!response.ok) throw new Error(`服务器响应错误: ${response.statusText}`);
-            const result = await response.json();
-            console.log('文本发送成功，后端响应:', result);
 
-        } catch (error) {
-            console.error('发送文本失败:', error);
-            alert('文本发送失败，请查看控制台。');
+        async function handleSendHumanText() {
+            if (!state.sessionId) {
+                showToast('请先连接数字人', 'error');
+                return;
+            }
+            const text = dom.humanTextInput.value.trim();
+            if (!text) return;
+            
+            const useRag = dom.ragModeSpeakSwitch.checked;
+            const kbName = dom.kbSpeakSelect.value;
+
+            const payload = {
+                sessionid: state.sessionId,
+                text: text,
+                interrupt: true,
+                use_rag: useRag,
+                kb_name: useRag ? kbName : null,
+                type: 'chat'
+            };
+            
+            try {
+                await api.sendHumanText(payload);
+            } catch (e) {}
         }
-    }
 
-    function resetRecordingUI() {
-        audioChunks = [];
-        startRecordButton.style.display = 'block';
-        stopRecordButton.style.display = 'none';
-        stopRecordButton.textContent = '停止录音';
-        if(session_id) startRecordButton.disabled = false; // 只有在连接时才启用
-        stopRecordButton.disabled = false;
-        recordingIndicator.style.display = 'none';
-    }
+        function connect() {
+            dom.startConnBtn.disabled = true;
+            dom.startConnBtn.textContent = '连接中...';
+            window.start();
 
+            const interval = setInterval(() => {
+                if (dom.sessionIdInput.value && dom.sessionIdInput.value !== "0") {
+                    clearInterval(interval);
+                    state.sessionId = dom.sessionIdInput.value;
+                    showToast('连接成功！');
+                    dom.startConnBtn.style.display = 'none';
+                    dom.stopConnBtn.style.display = 'block';
+                }
+            }, 500);
+        }
+
+        function disconnect() {
+            if (window.stop) window.stop();
+            state.sessionId = null;
+            dom.sessionIdInput.value = '';
+            showToast('已断开连接');
+            dom.startConnBtn.style.display = 'block';
+            dom.stopConnBtn.style.display = 'none';
+            dom.startConnBtn.disabled = false;
+            dom.startConnBtn.textContent = '开始连接';
+        }
+        
+        async function startRecording() {
+            if (!state.sessionId) {
+                showToast("请先连接数字人", "error");
+                return;
+            }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                state.mediaRecorder = new MediaRecorder(stream);
+                state.audioChunks = [];
+                state.mediaRecorder.ondataavailable = e => state.audioChunks.push(e.data);
+                state.mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(state.audioChunks, { type: 'audio/wav' });
+                    const useRag = dom.ragModeSpeakSwitch.checked;
+                    const kbName = dom.kbSpeakSelect.value;
+
+                    const formData = new FormData();
+                    formData.append('file', audioBlob, 'recording.wav');
+                    formData.append('sessionid', state.sessionId);
+                    formData.append('use_rag', useRag);
+                    if (useRag) {
+                        formData.append('kb_name', kbName);
+                    }
+                    
+                    try {
+                        await api.sendHumanAudio(formData);
+                        showToast('语音已发送处理');
+                    } catch(e) {}
+                    
+                    dom.stopRecordBtn.style.display = 'none';
+                    dom.startRecordBtn.style.display = 'block';
+                };
+                state.mediaRecorder.start();
+                dom.startRecordBtn.style.display = 'none';
+                dom.stopRecordBtn.style.display = 'block';
+            } catch (e) {
+                showToast('无法访问麦克风', 'error');
+            }
+        }
+
+        // --- 事件监听 ---
+        dom.startConnBtn.addEventListener('click', connect);
+        dom.stopConnBtn.addEventListener('click', disconnect);
+        dom.sendHumanTextBtn.addEventListener('click', handleSendHumanText);
+        dom.startRecordBtn.addEventListener('click', startRecording);
+        dom.stopRecordBtn.addEventListener('click', () => state.mediaRecorder?.stop());
+
+        dom.sendChatBtn.addEventListener('click', handleRagChat);
+        dom.createKbBtn.addEventListener('click', handleCreateKb);
+        dom.updatePromptBtn.addEventListener('click', async () => { try { await api.updatePrompt(dom.systemPrompt.value); showToast('提示词更新成功'); } catch(e){} });
+        
+        function syncControls(source, value) {
+            if (source === 'ragSwitch') {
+                dom.ragModeSpeakSwitch.checked = value;
+                dom.ragModeSwitch.checked = value;
+            } else if (source === 'kbSelect') {
+                dom.kbSpeakSelect.value = value;
+                dom.kbSelect.value = value;
+            }
+        }
+        
+        dom.ragModeSwitch.addEventListener('change', async (e) => { 
+            const isChecked = e.target.checked;
+            syncControls('ragSwitch', isChecked);
+            try { await api.setRagMode(isChecked); showToast(`RAG模式已${isChecked ? '开启' : '关闭'}`); } catch(e){} 
+        });
+        dom.ragModeSpeakSwitch.addEventListener('change', (e) => {
+             const isChecked = e.target.checked;
+            syncControls('ragSwitch', isChecked);
+            dom.ragModeSwitch.dispatchEvent(new Event('change'));
+        });
+
+        dom.kbSelect.addEventListener('change', async (e) => {
+             const selectedValue = e.target.value;
+             syncControls('kbSelect', selectedValue);
+             if (!selectedValue) return;
+             try { await api.switchKb(selectedValue); showToast(`知识库已切换为 ${selectedValue}`); } catch(e){}
+        });
+        dom.kbSpeakSelect.addEventListener('change', (e) => {
+            const selectedValue = e.target.value;
+            syncControls('kbSelect', selectedValue);
+            dom.kbSelect.dispatchEvent(new Event('change'));
+        });
+        
+        dom.deleteKbBtn.addEventListener('click', async () => {
+            const selectedKb = dom.kbSelect.value;
+            if (!selectedKb) { showToast('请选择一个知识库', 'error'); return; }
+            if (confirm(`确定要删除知识库 "${selectedKb}" 吗？此操作不可恢复。`)) {
+                try {
+                    await api.deleteKb(selectedKb);
+                    showToast(`知识库 ${selectedKb} 已删除`);
+                    initializeRAG();
+                } catch(e){}
+            }
+        });
+
+        initializeRAG();
+    });
 </script>
 </body>
 </html>

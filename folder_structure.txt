@@ -1,0 +1,122 @@
+[File] app.py
+[Folder] assets
+  [File] faq.md
+[File] baseasr.py
+[File] basereal.py
+[File] genavatar_musetalk.py
+[File] hubertasr.py
+[File] lightreal.py
+[File] lipasr.py
+[File] lipreal.py
+[File] llm.py
+[File] logger.py
+[File] museasr.py
+[File] musereal.py
+[Folder] musetalk
+  [File] =2.0.0
+  [File] myutil.py
+  [Folder] utils
+    [File] audio_processor.py
+    [File] blending.py
+    [Folder] dwpose
+      [File] default_runtime.py
+      [File] rtmpose-l_8xb32-270e_coco-ubody-wholebody-384x288.py
+    [Folder] face_detection
+      [File] api.py
+      [Folder] detection
+        [File] core.py
+        [Folder] sfd
+          [File] bbox.py
+          [File] detect.py
+          [File] net_s3fd.py
+          [File] sfd_detector.py
+          [File] __init__.py
+        [File] __init__.py
+      [File] models.py
+      [File] README.md
+      [File] utils.py
+      [File] __init__.py
+    [Folder] face_parsing
+      [File] model.py
+      [File] resnet.py
+      [File] __init__.py
+    [File] preprocessing.py
+    [File] training_utils.py
+    [File] utils.py
+    [File] __init__.py
+  [Folder] whisper
+    [File] audio2feature.py
+    [Folder] whisper
+      [Folder] assets
+        [Folder] gpt2
+          [File] merges.txt
+        [File] mel_filters.npz
+        [Folder] multilingual
+          [File] merges.txt
+      [File] audio.py
+      [File] decoding.py
+      [File] model.py
+      [Folder] normalizers
+        [File] basic.py
+        [File] english.py
+        [File] __init__.py
+      [File] tokenizer.py
+      [File] transcribe.py
+      [File] utils.py
+      [File] __init__.py
+      [File] __main__.py
+[File] requirements.txt
+[File] start.sh
+[File] start_doubao.sh
+[File] testfunasr.py
+[File] ttsreal.py
+[Folder] ultralight
+  [File] audio2feature.py
+  [File] genavatar.py
+  [File] unet.py
+[Folder] wav2lip
+  [File] audio.py
+  [Folder] face_detection
+    [File] api.py
+    [Folder] detection
+      [File] core.py
+      [Folder] sfd
+        [File] bbox.py
+        [File] detect.py
+        [File] net_s3fd.py
+        [File] sfd_detector.py
+        [File] __init__.py
+      [File] __init__.py
+    [File] models.py
+    [File] README.md
+    [File] utils.py
+    [File] __init__.py
+  [File] genavatar.py
+  [File] hparams.py
+[Folder] web
+  [Folder] asr
+    [File] index.html
+    [File] main.js
+    [File] pcm.js
+    [File] recorder-core.js
+    [File] wav.js
+    [File] wsconnecter.js
+  [File] chat.html
+  [File] client.js
+  [File] dashboard.html
+  [File] echo.html
+  [File] echoapi.html
+  [File] mpegts-1.7.3.min.js
+  [File] rtcpush.html
+  [File] rtcpushapi-asr.html
+  [File] rtcpushapi.html
+  [File] rtcpushchat.html
+  [File] srs.sdk.js
+  [File] webrtc.html
+  [File] webrtc1.html
+  [File] webrtcapi-asr.html
+  [File] webrtcapi-custom.html
+  [File] webrtcapi.html
+  [File] webrtcchat.html
+  [File] whep.js
+[File] webrtc.py

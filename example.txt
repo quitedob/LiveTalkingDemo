@@ -1,0 +1,257 @@
+# D:\python\Aggent\testmain.py
+
+import os
+import subprocess
+import asyncio
+import io
+import wave
+
+import torch
+import numpy as np
+from scipy.io.wavfile import write as write_wav
+from TTS.api import TTS
+import locale
+import dolphin  # 新增：直接导入 dolphin 库
+
+
+# --- 配置区 ---
+class Config:
+    """
+    配置类，用于管理所有路径和模型名称。
+    简化注释：配置类
+    """
+    DOLPHIN_MODEL_DIR = r"D:\python\Aggent\model"
+    ASR_MODEL_NAME = "small"
+    ASR_DEVICE = "cuda"
+    TTS_MODEL_NAME = "tts_models/zh-CN/baker/tacotron2-DDC-GST"
+
+
+# --- 功能后端主类 (异步流式版) ---
+class FunctionalBackend:
+    """
+    功能后端，封装了 TTS、ASR 和 PDF 处理等核心功能。
+    简化注释：功能后端类
+    """
+
+    def __init__(self, config: Config):
+        """
+        【已重构】初始化后端，预加载所需模型并确保目录存在。
+        简化注释：初始化
+        """
+        print("正在初始化功能后端 (流式版)...")
+        self.config = config
+        self.asr_model = None  # 初始化 ASR 模型为空
+        self.tts_model = None  # 初始化 TTS 模型为空
+
+        # --- Dolphin ASR 模型加载 ---
+        try:
+            model_dir = self.config.DOLPHIN_MODEL_DIR
+            print(f"正在检查并创建 Dolphin 模型目录: {model_dir}")
+            os.makedirs(model_dir, exist_ok=True)
+            print(f"正在加载 ASR 模型: {self.config.ASR_MODEL_NAME}...")
+            # 【核心变更】直接加载模型到内存
+            self.asr_model = dolphin.load_model(
+                self.config.ASR_MODEL_NAME,
+                model_dir,
+                device=self.config.ASR_DEVICE
+            )
+            print("ASR 模型加载成功。")
+        except Exception as e:
+            print(f"错误：加载 ASR 模型失败！ {e}")
+
+        # --- Coqui TTS 模型加载 ---
+        os.environ["TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"] = "1"
+        try:
+            print(f"正在加载 TTS 模型: {self.config.TTS_MODEL_NAME}...")
+            self.tts_model = TTS(self.config.TTS_MODEL_NAME, progress_bar=False)
+            print("TTS 模型加载成功。")
+        except Exception as e:
+            print(f"错误：加载 TTS 模型失败！ {e}")
+
+        print("功能后端初始化完成。")
+
+    def text_to_speech(self, text: str, output_path: str):
+        """
+        将文本合成为 WAV 音频并保存到文件。
+        简化注释：文本转语音并保存
+        """
+        print(f"正在将文本合成为音频并保存到: {output_path}")
+        audio_bytes = self.text_to_speech_bytes(text)
+        if audio_bytes:
+            try:
+                with open(output_path, "wb") as f:
+                    f.write(audio_bytes)
+                print(f"语音合成成功，文件已保存到 {output_path}")
+            except IOError as e:
+                print(f"错误：无法写入音频文件 {output_path}。 {e}")
+        else:
+            print("错误：未能生成音频数据，无法保存文件。")
+
+    def speech_to_text(self, audio_path: str) -> str | None:
+        """
+        【已重构】使用 Dolphin ASR API 将本地音频文件转换为文本。
+        简化注释：音频文件转文本 (API)
+        """
+        if not self.asr_model:
+            print("错误：ASR 模型未加载，无法进行识别。")
+            return None
+        if not os.path.exists(audio_path):
+            print(f"错误：音频文件不存在: {audio_path}")
+            return None
+
+        print(f"正在通过 API 识别音频文件: {audio_path}...")
+        try:
+            # 【核心变更】直接调用 API 进行识别
+            waveform = dolphin.load_audio(audio_path)
+            result = self.asr_model(waveform, lang_sym="zh", region_sym="CN")
+            transcribed_text = result.text
+            print(f"识别结果: {transcribed_text}")
+            return transcribed_text
+        except Exception as e:
+            print(f"错误：使用 ASR API 识别时出错: {e}")
+            return None
+
+    # 文件路径：D:\python\Aggent\testmain.py
+
+    def process_pdf_to_txt(self, pdf_path: str, txt_path: str):
+        """
+        使用 ocrmypdf 对 PDF 文件进行 OCR，并将结果存入文本文件。
+        修复：去掉 encoding，改为手动解码并忽略错误。
+        """
+        if not os.path.exists(pdf_path):
+            print(f"错误：PDF 文件不存在: {pdf_path}")
+            return
+
+        print(f"正在使用 OCR 处理 PDF 文件: {pdf_path}...")
+        command = [
+            "ocrmypdf", "-l", "chi_sim+eng",
+            "--sidecar", txt_path, pdf_path, "-"
+        ]
+
+        try:
+            # 不指定 encoding，让它返回 bytes
+            proc = subprocess.run(
+                command,
+                capture_output=True,
+                check=True
+            )
+            # 手动用 errors='ignore' 解码 stderr（OCRmyPDF 的 sidecar 文本在 stderr）
+            encoding = locale.getpreferredencoding(False)
+            output = proc.stderr.decode(encoding, errors='ignore')
+            print(f"OCR 日志:\n{output}")
+            print(f"成功将 PDF-OCR 文本提取到: {txt_path}")
+        except FileNotFoundError:
+            print("错误: 'ocrmypdf' 命令未找到。请确保它已安装 (pip install ocrmypdf)。")
+        except subprocess.CalledProcessError as e:
+            # 同样手动解码错误信息
+            encoding = locale.getpreferredencoding(False)
+            err = e.stderr.decode(encoding, errors='ignore')
+            print(f"错误：PDF OCR 处理失败: {err}")
+
+    async def speech_to_text_stream(self, audio_stream_queue: asyncio.Queue) -> str | None:
+        """
+        【已重构】从异步队列读取音频流，使用 Dolphin API 进行识别。
+        简化注释：音频流转文本 (API)
+        """
+        if not self.asr_model:
+            print("错误：ASR 模型未加载，无法进行识别。")
+            return None
+
+        audio_bytes = bytearray()
+        while not audio_stream_queue.empty():
+            chunk = await audio_stream_queue.get()
+            audio_bytes.extend(chunk)
+
+        if not audio_bytes:
+            return None
+
+        print(f"收到 {len(audio_bytes)} 字节的音频数据进行 API 识别...")
+
+        # API 可能需要从文件加载，我们仍然使用临时文件作为桥梁
+        temp_audio_path = "temp_stream_audio.wav"
+        try:
+            # 使用 wave 模块确保文件头正确
+            with io.BytesIO(audio_bytes) as bio:
+                with wave.open(bio, 'rb') as raw_wav:
+                    params = raw_wav.getparams()
+                    frames = raw_wav.readframes(params.nframes)
+                    with wave.open(temp_audio_path, 'wb') as temp_wav:
+                        temp_wav.setparams(params)
+                        temp_wav.writeframes(frames)
+
+            # 【核心变更】在异步函数中，将同步的 API 调用放入线程池执行
+            waveform = await asyncio.to_thread(dolphin.load_audio, temp_audio_path)
+            result = await asyncio.to_thread(
+                self.asr_model, waveform, lang_sym="zh", region_sym="CN"
+            )
+            transcribed_text = result.text
+            print(f"识别结果: {transcribed_text}")
+            return transcribed_text
+        except Exception as e:
+            print(f"错误：使用 ASR API 进行流识别时出错: {e}")
+            return None
+        finally:
+            if os.path.exists(temp_audio_path):
+                os.remove(temp_audio_path)
+
+    def text_to_speech_bytes(self, text: str) -> bytes | None:
+        """
+        将文本合成为 WAV 音频，并返回其字节数据。
+        简化注释：文本转语音字节流
+        """
+        if not self.tts_model:
+            print("错误：TTS 模型未加载。")
+            return None
+        try:
+            wav_output = self.tts_model.tts(text=text)
+            if isinstance(wav_output, list):
+                wav_array = np.array(wav_output, dtype=np.float32)
+            elif torch.is_tensor(wav_output):
+                wav_array = wav_output.cpu().numpy()
+            else:
+                return None
+
+            sample_rate = self.tts_model.synthesizer.output_sample_rate
+            buffer = io.BytesIO()
+            write_wav(buffer, sample_rate, wav_array)
+            buffer.seek(0)
+            return buffer.read()
+        except Exception as e:
+            print(f"错误：语音合成时出错: {e}")
+            return None
+
+
+# ==============================================================================
+# ... if __name__ == '__main__': 部分保持不变 ...
+# ==============================================================================
+if __name__ == '__main__':
+    print("===== 开始执行功能后端独立测试 =====")
+    config = Config()
+    backend = FunctionalBackend(config)
+    os.makedirs("test_output", exist_ok=True)
+
+    print("\n--- 测试 TTS 功能 ---")
+    tts_text = "锐评：在主流与黑深残的钢丝上反复横跳的「电子榨菜品鉴师」。"
+    tts_output_path = "test_output/test_tts.wav"
+    backend.text_to_speech(tts_text, tts_output_path)
+
+    print("\n--- 测试 ASR 功能 ---")
+    if os.path.exists(tts_output_path):
+        recognized_text = backend.speech_to_text(tts_output_path)
+        if recognized_text:
+            print(f"最终识别到的文本是: '{recognized_text}'")
+    else:
+        print("跳过 ASR 测试，因为输入的 TTS 文件不存在。")
+
+    print("\n--- 测试 PDF 处理功能 ---")
+    sample_pdf = "1.pdf"
+    if os.path.exists(sample_pdf):
+        pdf_output_txt = "test_output/sample.txt"
+        backend.process_pdf_to_txt(sample_pdf, pdf_output_txt)
+        if os.path.exists(pdf_output_txt):
+            with open(pdf_output_txt, 'r', encoding='utf-8') as f:
+                print(f"从PDF中提取的文本内容（前100字符）:\n{f.read(100)}...")
+    else:
+        print(f"跳过 PDF 测试，因为 '{sample_pdf}' 文件不存在。请放置一个用于测试。")
+
+    print("\n===== 功能后端测试结束 =====")

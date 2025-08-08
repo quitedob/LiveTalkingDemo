@@ -93,6 +93,10 @@ class BaseReal:
         self.custom_opt = {}
         self.__loadcustom()
 
+        # 日志节流阀
+        self.last_log_time_qsize = 0
+        self.last_log_time_fps = 0
+
     # ====== [MODIFIED FUNCTION] ======
     # 修改位置: basereal.py (第100行左右)
     # 修改原因: 增加 **tts_options 以接收并传递额外的TTS参数，如情感、语速等，解决 TypeError。
