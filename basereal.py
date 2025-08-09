@@ -97,20 +97,14 @@ class BaseReal:
         self.last_log_time_qsize = 0
         self.last_log_time_fps = 0
 
-    # ====== [MODIFIED FUNCTION] ======
-    # 修改位置: basereal.py (第100行左右)
-    # 修改原因: 增加 **tts_options 以接收并传递额外的TTS参数，如情感、语速等，解决 TypeError。
-    def put_msg_txt(self, msg, eventpoint=None, **tts_options):
+    async def put_msg_txt(self, text_stream, eventpoint=None, **tts_options):
         """
-        向TTS引擎传递待合成的文本消息。
-
-        Args:
-            msg (str): 需要进行文本转语音的字符串。
-            eventpoint (any, optional): 用于同步的事件点。默认为 None。
-            **tts_options: 包含其他TTS参数的关键字参数字典 (例如: voice, rate, emotion)。
+        [MODIFIED] 接收一个文本流，并逐句送入TTS引擎。
+        Receives a text stream and sends it sentence by sentence to the TTS engine.
         """
-        # 将文本、事件点以及所有其他TTS选项传递给具体的TTS实现类
-        self.tts.put_msg_txt(msg, eventpoint, **tts_options)
+        async for sentence in text_stream:
+            if sentence:
+                self.tts.put_msg_txt(sentence, eventpoint, **tts_options)
     
     def put_audio_frame(self,audio_chunk,eventpoint=None): #16khz 20ms pcm
         self.asr.put_audio_frame(audio_chunk,eventpoint)

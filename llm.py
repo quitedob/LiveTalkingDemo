@@ -1,6 +1,7 @@
 # /workspace/LiveTalking/llm.py
 import aiohttp
 import json
+import re
 from logger import logger
 
 class LLMClient:
@@ -20,6 +21,21 @@ class LLMClient:
         self.model = model
         self.system_prompt = system_prompt
         self.timeout = aiohttp.ClientTimeout(total=timeout)
+
+    @staticmethod
+    def _clean(text: str) -> str:
+        """
+        简化注释：清洗LLM返回的文本，移除思考标签和多余标点。
+        - text: 原始文本。
+        - 返回: 清洗后的文本。
+        """
+        # ① 删除 <think>…</think>
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
+        # ② 删除 /nothink 等残留
+        text = re.sub(r"/nothink", "", text, flags=re.I)
+        # ③ 移除除中文、字母、数字、空格、逗号、句号外的所有符号
+        text = re.sub(r'[^\u4e00-\u9fa5a-zA-Z0-9，。.,]', '', text)
+        return text.strip()
 
     async def ask(self, user_prompt: str, system_prompt_override: str = None):
         """
@@ -57,7 +73,9 @@ class LLMClient:
                             try:
                                 data = json.loads(line.decode('utf-8'))
                                 if 'message' in data and 'content' in data['message']:
-                                    yield data['message']['content']
+                                    cleaned_chunk = self._clean(data['message']['content'])
+                                    if cleaned_chunk: # 确保清洗后不为空
+                                        yield cleaned_chunk
                                 if data.get('done') and data.get('error'):
                                     logger.error(f"Ollama stream error: {data['error']}")
                             except json.JSONDecodeError:

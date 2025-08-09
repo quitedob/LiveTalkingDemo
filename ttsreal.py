@@ -7,6 +7,7 @@ import soundfile as sf
 import resampy
 import asyncio
 import edge_tts
+import re
 
 import os
 import hmac
@@ -35,6 +36,19 @@ from logger import logger
 class State(Enum):
     RUNNING=0
     PAUSE=1
+
+def _sentence_splitter(text: str):
+    """
+    使用正则表达式按标点符号分割文本成句子。
+    Splits text into sentences using regular expressions based on punctuation.
+    """
+    # 使用正则表达式按常见的结束标点分割句子
+    sentences = re.split(r'([。？！；!?;\n])', text)
+    # 将标点符号重新附加到句子末尾
+    result = [sentences[i] + (sentences[i+1] if i+1 < len(sentences) else '') 
+              for i in range(0, len(sentences), 2)]
+    # 过滤掉可能产生的空字符串
+    return [s.strip() for s in result if s.strip()]
 
 class BaseTTS:
     def __init__(self, opt, parent:BaseReal):
@@ -89,35 +103,58 @@ class BaseTTS:
 
 ###########################################################################################
 class EdgeTTS(BaseTTS):
-    def txt_to_audio(self,msg):
-        voicename = self.opt.REF_FILE #"zh-CN-YunxiaNeural"
-        # [修改] 解包三元组，即使 tts_options 在此类中未使用，也要保持签名一致
+    def txt_to_audio(self, msg):
+        voicename = self.opt.REF_FILE  # "zh-CN-YunxiaNeural"
         text, textevent, tts_options = msg
-        t = time.time()
-        # 注意：EdgeTTS 自身的参数调整（如语速）需要在 __main 方法中通过 edge_tts 库的接口实现，此处未展开
-        asyncio.new_event_loop().run_until_complete(self.__main(voicename,text))
-        logger.info(f'-------edge tts time:{time.time()-t:.4f}s')
-        if self.input_stream.getbuffer().nbytes<=0: #edgetts err
-            logger.error('edgetts err!!!!!')
-            return
+
+        # 将长文本分割成句子
+        sentences = _sentence_splitter(text)
         
-        self.input_stream.seek(0)
-        stream = self.__create_bytes_stream(self.input_stream)
-        streamlen = stream.shape[0]
-        idx=0
-        while streamlen >= self.chunk and self.state==State.RUNNING:
-            eventpoint=None
-            streamlen -= self.chunk
-            if idx==0:
-                eventpoint={'status':'start','text':text,'msgevent':textevent}
-            elif streamlen<self.chunk:
-                eventpoint={'status':'end','text':text,'msgevent':textevent}
-            self.parent.put_audio_frame(stream[idx:idx+self.chunk],eventpoint)
-            idx += self.chunk
-        #if streamlen>0:  #skip last frame(not 20ms)
-        #   self.queue.put(stream[idx:])
-        self.input_stream.seek(0)
-        self.input_stream.truncate() 
+        # 标记第一个和最后一个句子，用于发送 'start' 和 'end' 事件
+        total_sentences = len(sentences)
+        for i, sentence in enumerate(sentences):
+            if not self.state == State.RUNNING:
+                logger.warning("TTS 任务在处理句子时被中断。")
+                break
+            
+            # 清空上一句的音频流
+            self.input_stream.seek(0)
+            self.input_stream.truncate()
+
+            t = time.time()
+            # 逐句进行TTS合成
+            asyncio.run(self.__main(voicename, sentence))
+            logger.info(f'-------edge tts time for sentence: {time.time()-t:.4f}s')
+
+            if self.input_stream.getbuffer().nbytes <= 0:
+                logger.error(f'EdgeTTS 合成句子失败: "{sentence}"')
+                continue
+            
+            self.input_stream.seek(0)
+            stream = self.__create_bytes_stream(self.input_stream)
+            streamlen = stream.shape[0]
+            idx = 0
+
+            is_first_chunk_of_all = (i == 0)
+            
+            chunk_index = 0
+            while streamlen >= self.chunk and self.state == State.RUNNING:
+                eventpoint = None
+                
+                # 只有在整个文本的第一个句子的第一个音频块，才发送 'start' 事件
+                if is_first_chunk_of_all and chunk_index == 0:
+                    eventpoint = {'status': 'start', 'text': text, 'msgevent': textevent}
+
+                self.parent.put_audio_frame(stream[idx:idx + self.chunk], eventpoint)
+                
+                streamlen -= self.chunk
+                idx += self.chunk
+                chunk_index += 1
+
+        # 所有句子处理完毕后，发送 'end' 事件
+        if self.state == State.RUNNING:
+            end_event = {'status': 'end', 'text': text, 'msgevent': textevent}
+            self.parent.put_audio_frame(np.zeros(self.chunk, np.float32), end_event)
 
     def __create_bytes_stream(self,byte_stream):
         #byte_stream=BytesIO(buffer)
@@ -138,16 +175,9 @@ class EdgeTTS(BaseTTS):
     async def __main(self,voicename: str, text: str):
         try:
             communicate = edge_tts.Communicate(text, voicename)
-
-            #with open(OUTPUT_FILE, "wb") as file:
-            first = True
             async for chunk in communicate.stream():
-                if first:
-                    first = False
                 if chunk["type"] == "audio" and self.state==State.RUNNING:
-                    #self.push_audio(chunk["data"])
                     self.input_stream.write(chunk["data"])
-                    #file.write(chunk["data"])
                 elif chunk["type"] == "WordBoundary":
                     pass
         except Exception as e:

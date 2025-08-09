@@ -61,10 +61,13 @@ class KnowledgeBase:
 
         # 5. 将处理好的数据添加到集合中
         try:
-            collection.add(
-                documents=documents,
-                metadatas=metadatas,
-                ids=ids
+            # 在线程池中执行 collection.add 以避免任何潜在的阻塞
+            await loop.run_in_executor(
+                None,
+                collection.add,
+                documents,
+                metadatas,
+                ids
             )
             logger.info(f"成功将 {len(documents)} 个文本块从 '{txt_path.name}' 添加到知识库 '{kb_name}'。")
         except Exception as e:
@@ -104,32 +107,22 @@ class KnowledgeBase:
             logger.warning(f"尝试删除知识库 '{kb_name}' 时出错 (可能集合不存在): {e}")
             # 根据需求，这里可以不向上抛出异常，因为目标（集合不存在）已经达成
             pass
-
-    async def query(self, kb_name: str, query_text: str, n_results: int = 3) -> list:
+            
+    def _perform_query(self, kb_name: str, query_text: str, n_results: int) -> list:
         """
-        在指定的知识库中查询与问题最相关的文本块。
-        :param kb_name: 知识库名称。
-        :param query_text: 用户查询的问题。
-        :param n_results: 返回的最相关结果数量。
-        :return: 包含相关文本块和元数据的列表。
+        同步执行ChromaDB查询的辅助函数。
         """
-        logger.info(f"正在知识库 '{kb_name}' 中查询: '{query_text[:50]}...'")
         try:
             collection = self.client.get_collection(
                 name=kb_name,
                 embedding_function=self.embedding_function
             )
             
-            # 在线程池中执行查询
-            loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(
-                None,
-                lambda: collection.query(
-                    query_texts=[query_text],
-                    n_results=n_results
-                )
+            results = collection.query(
+                query_texts=[query_text],
+                n_results=n_results
             )
-            
+
             # 提取并格式化结果
             retrieved_docs = []
             if results and results['documents']:
@@ -142,11 +135,23 @@ class KnowledgeBase:
             
             logger.info(f"查询到 {len(retrieved_docs)} 个相关结果。")
             return retrieved_docs
-
         except Exception as e:
             # 如果集合不存在，get_collection会抛出异常
             logger.error(f"查询知识库 '{kb_name}' 时出错 (可能集合不存在): {e}")
             return []
+
+    async def query(self, kb_name: str, query_text: str, n_results: int = 3) -> list:
+        """
+        在指定的知识库中异步查询与问题最相关的文本块。
+        通过在线程池中运行同步查询来避免阻塞事件循环。
+        """
+        logger.info(f"正在知识库 '{kb_name}' 中查询: '{query_text[:50]}...'")
+        loop = asyncio.get_event_loop()
+        
+        # 将整个阻塞操作（包括get_collection和query）都放到线程池中
+        return await loop.run_in_executor(
+            None, self._perform_query, kb_name, query_text, n_results
+        )
 
     def list_kbs(self) -> list:
         """
@@ -154,4 +159,3 @@ class KnowledgeBase:
         """
         collections = self.client.list_collections()
         return [col.name for col in collections]
-

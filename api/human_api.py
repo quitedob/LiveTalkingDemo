@@ -2,55 +2,35 @@
 # -*- 简化注释：导入必要的库 -*-
 import asyncio
 import json
+import re
 
 from aiohttp import web
 
 from api.utils import transcribe_audio
 from logger import logger
 
-async def _handle_llm_conversation(llm_client, text, session_id, nerfreals, tts_options):
+async def _llm_to_sentence_stream(llm_stream):
     """
-    处理标准的LLM对话流程。
+    将LLM的字符流转换为句子流。
+    Converts a stream of characters from LLM into a stream of sentences.
     """
-    async def stream_llm_to_tts():
-        try:
-            response_chunks = []
-            async for text_chunk in llm_client.ask(text):
-                if session_id not in nerfreals:
-                    logger.warning(f"会话 {session_id} 在接收LLM响应时已关闭，中断任务。")
-                    return
-                response_chunks.append(text_chunk)
-            
-            full_response = "".join(response_chunks)
-            if full_response and session_id in nerfreals:
-                nerfreals[session_id].put_msg_txt(full_response, tts_options=tts_options)
-        except Exception as e:
-            logger.error(f"标准LLM对话任务执行出错 (会话 {session_id}): {e}")
-
-    asyncio.create_task(stream_llm_to_tts())
-
-
-async def _handle_rag_conversation(rag_core, text, session_id, nerfreals, tts_options):
-    """
-    处理RAG增强的对话流程。
-    """
-    async def stream_rag_to_tts():
-        try:
-            response_chunks = []
-            # RAG核心现在使用共享的LLM客户端，所以我们直接从它那里获取响应
-            async for text_chunk in rag_core.get_response(text):
-                if session_id not in nerfreals:
-                    logger.warning(f"会话 {session_id} 在接收RAG响应时已关闭，中断任务。")
-                    return
-                response_chunks.append(text_chunk)
-
-            full_response = "".join(response_chunks)
-            if full_response and session_id in nerfreals:
-                nerfreals[session_id].put_msg_txt(full_response, tts_options=tts_options)
-        except Exception as e:
-            logger.error(f"RAG对话任务执行出错 (会话 {session_id}): {e}")
-
-    asyncio.create_task(stream_rag_to_tts())
+    buffer = ""
+    # 使用正则表达式按常见的结束标点分割句子
+    sentence_delimiters = re.compile(r'([。？！；!?;\n])')
+    
+    async for chunk in llm_stream:
+        buffer += chunk
+        while True:
+            match = sentence_delimiters.search(buffer)
+            if match:
+                sentence = buffer[:match.end()]
+                buffer = buffer[match.end():]
+                yield sentence.strip()
+            else:
+                break
+    # 处理流结束后剩余的文本
+    if buffer.strip():
+        yield buffer.strip()
 
 
 async def human(request):
@@ -68,21 +48,30 @@ async def human(request):
         if not sessionid or sessionid not in nerfreals:
             raise ValueError("无效或已过期的 sessionid")
 
-        if params.get('interrupt'):
-            nerfreals[sessionid].flush_talk()
-
         tts_options = params.get('tts_options', {})
         use_rag = params.get('use_rag', False)
         kb_name = params.get('kb_name')
 
-        # 根据use_rag标志，决定对话流程
-        if use_rag:
-            # 在RAG模式下，首先确保设置了当前知识库
-            rag_core.set_current_kb(kb_name)
-            await _handle_rag_conversation(rag_core, params['text'], sessionid, nerfreals, tts_options)
-        else:
-            # 标准LLM对话
-            await _handle_llm_conversation(llm_client, params['text'], sessionid, nerfreals, tts_options)
+        async def stream_pipeline(text):
+            try:
+                if use_rag:
+                    rag_core.set_current_kb(kb_name)
+                    llm_stream = rag_core.get_response(text)
+                else:
+                    llm_stream = llm_client.ask(text)
+                
+                sentence_stream = _llm_to_sentence_stream(llm_stream)
+                
+                if sessionid in nerfreals:
+                    await nerfreals[sessionid].put_msg_txt(sentence_stream, tts_options=tts_options)
+                else:
+                    logger.warning(f"会话 {sessionid} 在处理流式响应时已关闭。")
+
+            except Exception as e:
+                logger.error(f"流式处理管道出错 (会话 {sessionid}): {e}", exc_info=True)
+
+        # 创建一个后台任务来处理整个流式对话，立即返回HTTP响应
+        asyncio.create_task(stream_pipeline(params['text']))
 
         return web.Response(
             content_type="application/json",
@@ -163,11 +152,25 @@ async def audio_chat(request):
         tts_options_str = form.get('tts_options', '{}')
         tts_options = json.loads(tts_options_str)
 
-        if use_rag:
-            rag_core.set_current_kb(kb_name)
-            await _handle_rag_conversation(rag_core, transcribed_text, sessionid, nerfreals, tts_options)
-        else:
-            await _handle_llm_conversation(llm_client, transcribed_text, sessionid, nerfreals, tts_options)
+        async def stream_pipeline(text):
+            try:
+                if use_rag:
+                    rag_core.set_current_kb(kb_name)
+                    llm_stream = rag_core.get_response(text)
+                else:
+                    llm_stream = llm_client.ask(text)
+                
+                sentence_stream = _llm_to_sentence_stream(llm_stream)
+                
+                if sessionid in nerfreals:
+                    await nerfreals[sessionid].put_msg_txt(sentence_stream, tts_options=tts_options)
+                else:
+                    logger.warning(f"会话 {sessionid} 在处理语音聊天的流式响应时已关闭。")
+
+            except Exception as e:
+                logger.error(f"语音聊天的流式处理管道出错 (会话 {sessionid}): {e}", exc_info=True)
+
+        asyncio.create_task(stream_pipeline(transcribed_text))
 
         return web.Response(content_type="application/json", text=json.dumps({"code": 0, "msg": "ok"}))
     except Exception as e:

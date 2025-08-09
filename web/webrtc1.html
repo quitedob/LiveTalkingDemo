@@ -319,6 +319,7 @@
             ragChat: (query) => api.fetch('/rag/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({query}) }),
             sendHumanText: (payload) => api.fetch('/human', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }),
             sendHumanAudio: (formData) => api.fetch('/audio_chat', { method: 'POST', body: formData }),
+            interruptTalk: (sessionId) => api.fetch('/interrupt_talk', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ sessionid: sessionId }) }),
         };
 
         // --- 核心功能 ---
@@ -450,6 +451,9 @@
             }
             const text = dom.humanTextInput.value.trim();
             if (!text) return;
+
+            // 先发送打断请求
+            await api.interruptTalk(state.sessionId).catch(e => console.error("打断请求失败:", e));
             
             const useRag = dom.ragModeSpeakSwitch.checked;
             const kbName = dom.kbSpeakSelect.value;
@@ -457,7 +461,7 @@
             const payload = {
                 sessionid: state.sessionId,
                 text: text,
-                interrupt: true,
+                interrupt: false, // interrupt Talk 已独立发送
                 use_rag: useRag,
                 kb_name: useRag ? kbName : null,
                 type: 'chat'
@@ -500,6 +504,9 @@
                 showToast("请先连接数字人", "error");
                 return;
             }
+            // 先发送打断请求
+            await api.interruptTalk(state.sessionId).catch(e => console.error("打断请求失败:", e));
+
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 state.mediaRecorder = new MediaRecorder(stream);
