@@ -244,18 +244,66 @@ class OllamaEmbeddingFunction(embedding_functions.EmbeddingFunction):
         self._session = requests.Session()
 
     def __call__(self, input_texts: List[str]) -> List[List[float]]:
-        logger.info(f"[emb] 开始为 {len(input_texts)} 个文本块计算嵌入向量...")
+        """
+        中文注释：为一批文本生成嵌入；兼容 Ollama /api/embeddings 的多种入参/出参格式，
+        并在不支持批量时自动逐条请求，确保返回与输入数量一致；失败时使用零向量兜底避免中断。
+        """
+        logger.info(f"[emb] 开始为 {len(input_texts)} 个文本块计算嵌入向量.")
+        # —— 基本兜底维度（与项目里常用的 768 对齐）——
+        DEFAULT_DIM = 768
+
         try:
-            response = self._session.post(
+            # 优先尝试批量：Ollama 常用 key 为 "input"（可为 str 或 list）
+            resp = self._session.post(
                 self._api_url,
-                json={"model": self._model, "prompts": input_texts}
+                json={"model": self._model, "input": input_texts},  # 关键修正：prompts -> input
+                timeout=30,
             )
-            response.raise_for_status()
-            # [修改] Ollama 批量嵌入的返回格式是 `{"embeddings": [[...], [...]]}`
-            embeddings = response.json().get("embeddings", [])
-            logger.info(f"[emb] 成功生成 {len(embeddings)} 个嵌入向量。")
-            return embeddings
+            resp.raise_for_status()
+            data = resp.json() or {}
+
+            # 兼容两种返回：embedding(单条) / embeddings(批量)
+            if "embeddings" in data and isinstance(data["embeddings"], list):
+                embs = data["embeddings"]
+            elif "embedding" in data and isinstance(data["embedding"], list):
+                # 如果返回的是单条 embedding，则只在输入长度为1时接受
+                embs = [data["embedding"]] if len(input_texts) == 1 else []
+            else:
+                embs = []
+
+            # 如果批量返回条数与输入不匹配，则退化为单条循环请求
+            if len(embs) != len(input_texts):
+                embs = []
+                for text in input_texts:
+                    single = self._session.post(
+                        self._api_url,
+                        # 兼容 "input" 与 "prompt" 两种常见字段
+                        json={"model": self._model, "input": text},
+                        timeout=30,
+                    )
+                    single.raise_for_status()
+                    j = single.json() or {}
+                    if "embedding" in j and isinstance(j["embedding"], list):
+                        embs.append(j["embedding"])
+                    elif "embeddings" in j and isinstance(j["embeddings"], list) and len(j["embeddings"]) > 0:
+                        embs.append(j["embeddings"][0])
+                    else:
+                        embs.append(None)  # 暂存，稍后兜底
+
+            # —— 对 None 或空向量做兜底 —— 
+            # 尝试从已有向量推断真实维度
+            dim = next((len(e) for e in embs if isinstance(e, list) and len(e) > 0), DEFAULT_DIM)
+            safe_embs = []
+            for e in embs:
+                if isinstance(e, list) and len(e) == dim:
+                    safe_embs.append(e)
+                else:
+                    safe_embs.append([0.0] * dim)
+
+            logger.info(f"[emb] 成功生成 {len(safe_embs)} 个嵌入向量。")
+            return safe_embs
+
         except Exception as e:
+            # 发生异常（网络/模型不可用/超时等）时的兜底：返回全零，保持流程不崩
             logger.error(f"[emb] 调用 Ollama 嵌入 API 失败: {e}", exc_info=True)
-            # 返回零向量作为兜底，以避免整个流程崩溃
-            return [[0.0] * 768 for _ in input_texts]
+            return [[0.0] * DEFAULT_DIM for _ in input_texts]

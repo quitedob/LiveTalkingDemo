@@ -244,98 +244,371 @@ class FishTTS(BaseTTS):
         except Exception as e:
             logger.error(f"FishTTS: 音频解码失败 - {e}", exc_info=True)
             return None
-
+# 文件路径：/workspace/LiveTalking/ttsreal.py
     def txt_to_audio(self, msg_tuple):
         """
-        【核心逻辑】句级半流式处理 + 克隆/默认音色分流
+        中文说明（WAV优先版/稳态+低CPU）：
+        - 始终以 format='wav', streaming=True 请求服务端（不再优先 s16le@16k）。
+        - 流式解析 RIFF/WAVE 头（fmt/data），自动识别 PCM/IEEE float/A-law/μ-law/8/16/24/32/64 位，正确解码为 float32 单声道。
+        - 在线重采样按“源采样率下每 80ms 一块”批处理 → 16k，降低 resampy 调用频率，稳定 CPU。
+        - 帧输出严格 20ms/帧配速（≈50fps），避免“推得太快挤爆下游队列”。
+        - 若存在本地克隆音色 WAV（fishtts_cloned_voices/<voice>.wav），优先走 references（msgpack）；否则用 reference_id（json）。
         """
-        # 1. 解包输入
+        # —— 导入依赖（函数内导入，避免模块级开销） ——
+        import time, struct, requests, numpy as np, resampy, ormsgpack
+        from pathlib import Path
+        from logger import logger
+
+        # ========= 基本参数 =========
         text, textevent, tts_options = msg_tuple
-
-        # 2. 判断是否需要使用克隆音色
-        clone_voice_name = None
+        # 解析音色名（本次传入优先；否则沿用上次成功；再否则用配置）
+        voice = None
         if isinstance(tts_options, dict):
-            # 兼容前端可能使用的两种键名
-            clone_voice_name = tts_options.get("fishtts_voice_name") or tts_options.get("voice_clone_name")
+            voice = tts_options.get("fishtts_voice_name") or tts_options.get("voice_clone_name")
+        if not voice:
+            voice = getattr(self, "_last_fishtts_voice", None) or getattr(self.opt, "REF_FILE", None)
 
-        # 3. 如果指定了克隆音色，加载参考音频
+        target_sr = self.sample_rate           # 16_000
+        samples_per_frame = self.chunk         # 320 (= 20ms@16k)
+        FRAME_SECONDS = 0.02                   # 20ms/帧
+
+        # —— 配速器（防止推帧过快挤爆CPU/下游） ——
+        ENABLE_PACING = True
+        PACE_SLEEP_CAP = 0.010                 # 单次最多 sleep 10ms
+
+        def _pacer_init():
+            return {"t0": None, "frames": 0}
+
+        def _pace_once(pctx):
+            if not ENABLE_PACING:
+                return
+            if pctx["t0"] is None:
+                pctx["t0"] = time.perf_counter()
+                return
+            target_t = pctx["t0"] + pctx["frames"] * FRAME_SECONDS
+            now = time.perf_counter()
+            if target_t > now:
+                time.sleep(min(target_t - now, PACE_SLEEP_CAP))
+
+        # ========= 选择 references 或 reference_id =========
+        # 说明：有本地克隆音色 wav 则走 references（msgpack），否则 ref_id（json）
+        clone_dir = Path(getattr(self.opt, 'fishtts_cloned_voices_path', './fishtts_cloned_voices'))
+        ref_wav_path = clone_dir / f"{voice}.wav" if voice else None
         ref_audio_bytes = None
-        clone_source_info = "默认音色" # 用于日志记录
-        if clone_voice_name:
+        if ref_wav_path and ref_wav_path.is_file():
             try:
-                clone_dir = Path(getattr(self.opt, 'fishtts_cloned_voices_path', './fishtts_cloned_voices'))
-                ref_wav_path = clone_dir / f"{clone_voice_name}.wav"
-                if ref_wav_path.is_file():
-                    ref_audio_bytes = ref_wav_path.read_bytes()
-                    clone_source_info = f"克隆音色 '{clone_voice_name}'"
-                    logger.info(f"FishTTS: 成功加载克隆参考音频 -> {ref_wav_path}")
-                else:
-                    logger.warning(f"FishTTS: 未找到指定的克隆音频 {ref_wav_path}，将回退到默认音色。")
+                ref_audio_bytes = ref_wav_path.read_bytes()
+                logger.info(f"FishTTS: 使用本地克隆参考音频 -> {ref_wav_path}")
             except Exception as e:
-                logger.error(f"FishTTS: 加载克隆音频失败: {e}，将回退到默认音色。", exc_info=True)
-        else:
-            logger.info("FishTTS: 未指定克隆音色，使用服务默认音色。")
-            
-        # 4. 文本切分为句子，实现半流式
-        sentences = _sentence_splitter(text)
-        if not sentences:
-            logger.warning("FishTTS: 输入文本为空或只包含标点，已跳过。")
+                logger.warning(f"FishTTS: 读取克隆音频失败({e})，改用 reference_id")
+
+        # ========= 发起“WAV流式”请求（不再尝试 s16le） =========
+        base_url = self.api_url  # e.g. http://127.0.0.1:8080/v1/tts
+
+        def _post_json(payload):
+            # 使用 JSON 载荷（reference_id）
+            return requests.post(base_url, json=payload, stream=True,
+                                headers={"content-type": "application/json", "accept": "*/*"},
+                                timeout=(3, 600))
+
+        def _post_msgpack(payload):
+            # 使用 msgpack 载荷（references: 直接带参考音频字节）
+            return requests.post(base_url, data=ormsgpack.packb(payload), stream=True,
+                                headers={"content-type": "application/msgpack", "accept": "*/*"},
+                                timeout=(3, 600))
+
+        try:
+            if ref_audio_bytes is not None:
+                # —— references（msgpack）路径：format=wav, streaming=true ——
+                req = {
+                    "text": text,
+                    "format": "wav",
+                    "streaming": True,
+                    "use_memory_cache": "on",
+                    "references": [{"audio": ref_audio_bytes, "text": ""}],
+                    "reference_id": None
+                }
+                resp = _post_msgpack(req)
+            else:
+                # —— reference_id（json）路径：format=wav, streaming=true ——
+                req = {
+                    "text": text,
+                    "reference_id": voice,
+                    "format": "wav",
+                    "streaming": True,
+                    "use_memory_cache": "on",
+                }
+                resp = _post_json(req)
+
+            resp.raise_for_status()
+        except Exception as e:
+            logger.error(f"FishTTS WAV 流式请求失败：{e}")
             return
 
-        # 5. 统一处理首帧和尾帧事件
-        first_eventpoint = {'status': 'start', 'text': text, 'msgevent': textevent}
-        has_sent_first_frame = False
-        headers = {"Content-Type": "application/msgpack", "Accept": "*/*"}
-        
-        # 6. 逐句请求并推送音频
-        for idx, sent in enumerate(sentences, 1):
-            if not sent.strip() or self.state != State.RUNNING:
+        # 粘性音色：成功请求后记住本次 voice
+        try:
+            if voice:
+                setattr(self, "_last_fishtts_voice", str(voice))
+        except Exception:
+            pass
+
+        # ========= WAV 流稳健解析（fmt/data） =========
+        header_buf = bytearray()   # 累积 RIFF/WAVE 头与 chunk 头
+        wav_ready = False          # 是否已遇到 data 段
+        fmt = {
+            "audio_format": 1,     # 1=PCM, 3=IEEE_FLOAT, 6=A-law, 7=μ-law
+            "channels": 1,
+            "sample_rate": 44100,
+            "bits_per_sample": 16
+        }
+        data_bytes = bytearray()   # data 段原始字节缓存
+
+        # —— G.711 μ/A-law 查表（8bit -> int16） ——
+        _ulaw_lut, _alaw_lut = None, None
+        def _g711_tables():
+            nonlocal _ulaw_lut, _alaw_lut
+            if _ulaw_lut is not None:
+                return _ulaw_lut, _alaw_lut
+            # μ-law
+            ulaw = np.zeros(256, dtype=np.int16)
+            for i in range(256):
+                u = ~i & 0xFF
+                sign = (u & 0x80)
+                exponent = (u >> 4) & 0x07
+                mantissa = u & 0x0F
+                sample = ((mantissa << 4) + 0x08) << (exponent + 2)
+                sample -= 0x84
+                ulaw[i] = -sample if sign else sample
+            _ulaw_lut = ulaw
+            # A-law
+            alaw = np.zeros(256, dtype=np.int16)
+            for i in range(256):
+                a = i ^ 0x55
+                sign = a & 0x80
+                exponent = (a >> 4) & 0x07
+                mantissa = a & 0x0F
+                if exponent > 0:
+                    sample = ((mantissa << 4) + 0x08 + 0x100) << (exponent - 1)
+                else:
+                    sample = (mantissa << 4) + 0x08
+                alaw[i] = -sample if sign else sample
+            _alaw_lut = alaw
+            return _ulaw_lut, _alaw_lut
+
+        def _parse_wav_header():
+            """
+            解析 RIFF/WAVE 头；当解析到 data 段开头时返回 (True, used_bytes)。
+            - used_bytes：头部消耗的总字节数（含 data 头），剩余即为 data 起始数据。
+            """
+            nonlocal header_buf, fmt
+            if len(header_buf) < 12:
+                return (False, 0)
+            if header_buf[:4] != b'RIFF' or header_buf[8:12] != b'WAVE':
+                # 非标准 WAV：视为“无头”原始流，交给后续原始PCM处理
+                return (True, 0)
+
+            offset = 12
+            used_until = 12
+            fmt_fields = None
+
+            while True:
+                if len(header_buf) - offset < 8:
+                    return (False, used_until)  # 头不足
+                cid = header_buf[offset:offset+4]
+                csz = struct.unpack('<I', header_buf[offset+4:offset+8])[0]
+                offset += 8
+                if len(header_buf) - offset < csz:
+                    return (False, used_until)  # chunk 内容不足
+                cdata = header_buf[offset:offset+csz]
+                if cid == b'fmt ' and csz >= 16:
+                    af, ch, sr, br, ba, bps = struct.unpack('<HHIIHH', cdata[:16])
+                    fmt_fields = (af, ch, sr, bps)
+                elif cid == b'data':
+                    # 更新 fmt（若已获得）
+                    if fmt_fields:
+                        fmt["audio_format"], fmt["channels"], fmt["sample_rate"], fmt["bits_per_sample"] = fmt_fields
+                    return (True, offset)  # data 段开始位置
+                # 对齐偶数字节
+                offset += csz + (csz & 1)
+                used_until = offset
+
+        # ========= 在线解码 + 80ms批量重采样 + 20ms配速输出 =========
+        first_sent = False
+        pace = _pacer_init()
+
+        # 源缓冲（源采样率下的 float32）、目标块队列（16k下的块，按20ms取帧）
+        src_buf = np.zeros(0, dtype=np.float32)
+        dst_blocks = []   # list[np.ndarray] @16k
+        dst_idx = 0
+
+        def _emit_frames_from_blocks():
+            """从 16k 缓冲块按 20ms/帧取出并配速发送（避免大规模拼接）。"""
+            nonlocal first_sent, pace, dst_blocks, dst_idx
+            needed = samples_per_frame
+            while True:
+                total = sum(b.shape[0] for b in dst_blocks) - (dst_idx if dst_blocks else 0)
+                if total < needed:
+                    break
+                out = np.empty((needed,), dtype=np.float32)
+                pos = 0
+                while needed > 0:
+                    blk = dst_blocks[0]
+                    avail = blk.shape[0] - dst_idx
+                    take = avail if avail <= needed else needed
+                    out[pos:pos+take] = blk[dst_idx:dst_idx+take]
+                    pos += take; needed -= take; dst_idx += take
+                    if dst_idx >= blk.shape[0]:
+                        dst_blocks.pop(0); dst_idx = 0
+                event = None
+                if not first_sent:
+                    event = {'status': 'start', 'text': text, 'msgevent': textevent}
+                    first_sent = True
+                    pace["t0"] = time.perf_counter()
+                _pace_once(pace)
+                self.parent.put_audio_frame(out, event)
+                pace["frames"] += 1
+                needed = samples_per_frame  # 继续尝试下一帧
+
+        # 源重采样块大小：按 80ms@源采样率
+        block_src = max(int((80/1000.0) * fmt["sample_rate"]), 1)
+
+        # 将 data_bytes 的起始若干完整样本解码为 float32，并返回(浮点数组, 消费字节数)
+        def _bytes_to_float32_consume(buf: bytearray):
+            fmt_tag, ch, sr, bps = fmt["audio_format"], fmt["channels"], fmt["sample_rate"], fmt["bits_per_sample"]
+
+            if fmt_tag in (1, 3):  # PCM / IEEE float
+                if bps == 8:
+                    unit = 1 * ch
+                    use_n = (len(buf)//unit)*unit
+                    if use_n == 0: return (None, 0)
+                    parsed = bytes(buf[:use_n])
+                    u8 = np.frombuffer(parsed, dtype=np.uint8)
+                    if ch > 1:
+                        try: u8 = u8.reshape(-1, ch)[:,0]
+                        except Exception: u8 = u8[::ch]
+                    f = (u8.astype(np.float32) - 128.0) / 128.0
+                    return (f, use_n)
+                elif bps == 16:
+                    unit = 2 * ch
+                    use_n = (len(buf)//unit)*unit
+                    if use_n == 0: return (None, 0)
+                    parsed = bytes(buf[:use_n])
+                    i16 = np.frombuffer(parsed, dtype="<i2")
+                    if ch > 1:
+                        try: i16 = i16.reshape(-1, ch)[:,0]
+                        except Exception: i16 = i16[::ch]
+                    f = i16.astype(np.float32) / 32768.0
+                    return (f, use_n)
+                elif bps == 24:
+                    unit = 3 * ch
+                    use_n = (len(buf)//unit)*unit
+                    if use_n == 0: return (None, 0)
+                    parsed = memoryview(bytes(buf[:use_n]))
+                    b = np.frombuffer(parsed, dtype=np.uint8).reshape(-1, 3*ch)
+                    # 仅取第1声道的三字节
+                    b0 = b[:, :3]
+                    i32 = (b0[:,0].astype(np.int32) | (b0[:,1].astype(np.int32)<<8) | (b0[:,2].astype(np.int32)<<16))
+                    sign = (i32 & 0x800000) != 0
+                    i32[sign] |= ~0xffffff  # 符号扩展
+                    f = i32.astype(np.float32) / 8388608.0
+                    return (f, use_n)
+                elif bps == 32 and fmt_tag == 1:
+                    unit = 4 * ch
+                    use_n = (len(buf)//unit)*unit
+                    if use_n == 0: return (None, 0)
+                    parsed = bytes(buf[:use_n])
+                    i32 = np.frombuffer(parsed, dtype="<i4")
+                    if ch > 1:
+                        try: i32 = i32.reshape(-1, ch)[:,0]
+                        except Exception: i32 = i32[::ch]
+                    f = i32.astype(np.float32) / 2147483648.0
+                    return (f, use_n)
+                elif fmt_tag == 3 and bps in (32, 64):  # IEEE float
+                    unit = (4 if bps==32 else 8) * ch
+                    use_n = (len(buf)//unit)*unit
+                    if use_n == 0: return (None, 0)
+                    parsed = bytes(buf[:use_n])
+                    dt = np.float32 if bps==32 else np.float64
+                    f = np.frombuffer(parsed, dtype=dt)
+                    if ch > 1:
+                        try: f = f.reshape(-1, ch)[:,0]
+                        except Exception: f = f[::ch]
+                    f = f.astype(np.float32)
+                    return (f, use_n)
+                else:
+                    return (None, 0)
+
+            elif fmt_tag in (6, 7):  # A-law / μ-law
+                unit = 1 * ch
+                use_n = (len(buf)//unit)*unit
+                if use_n == 0: return (None, 0)
+                parsed = bytes(buf[:use_n])
+                lut_u, lut_a = _g711_tables()
+                u8 = np.frombuffer(parsed, dtype=np.uint8)
+                if ch > 1:
+                    try: u8 = u8.reshape(-1, ch)[:,0]
+                    except Exception: u8 = u8[::ch]
+                i16 = (lut_u[u8] if fmt_tag == 7 else lut_a[u8])
+                f = i16.astype(np.float32) / 32768.0
+                return (f, use_n)
+
+            # 其它非常见编码（如 ADPCM）——不在此解码，避免误判电音
+            return (None, 0)
+
+        # ========= 主循环：收流 → 解析头 → 解码数据 → 重采样 → 20ms配速输出 =========
+        for chunk in resp.iter_content(chunk_size=16384):
+            if not chunk or self.state != State.RUNNING:
                 continue
 
-            t0 = time.time()
-            # 6.1. 构建请求体 (Payload)
-            payload = {
-                "text": sent,
-                "format": "wav",
-                "normalize": True,
-                "streaming": False, # 服务端非流式，应用层半流式
-                "references": [],
-                "reference_id": None,
-            }
-            # 【分流逻辑】如果加载了克隆音频，则用它来锁定音色
-            if ref_audio_bytes:
-                payload["references"].append({"audio": ref_audio_bytes, "text": ""})
-            
-            # 6.2. 发送请求
-            try:
-                resp = requests.post(self.api_url, data=ormsgpack.packb(payload), headers=headers, timeout=60)
-                resp.raise_for_status()
-            except requests.RequestException as e:
-                logger.error(f"FishTTS: 第 {idx}/{len(sentences)} 句请求失败: {e}")
+            if not wav_ready:
+                # 头部尚未就绪：累积并尝试解析
+                header_buf.extend(chunk)
+                ok, used = _parse_wav_header()
+                if not ok:
+                    continue  # 头不完整，继续收
+                wav_ready = True
+                # used 前是头；若头后面带了部分 data，则移入 data_bytes
+                if used > 0 and len(header_buf) > used:
+                    data_bytes.extend(header_buf[used:])
+                header_buf.clear()
+                # 更新“重采样块大小”为 80ms@源采样率
+                block_src = max(int((80/1000.0) * fmt["sample_rate"]), 1)
                 continue
 
-            # 6.3. 解码音频
-            audio_f32 = self._decode_audio(resp.content)
-            if audio_f32 is None or audio_f32.size == 0:
-                logger.warning(f"FishTTS: 第 {idx}/{len(sentences)} 句解码后为空，已跳过。")
-                continue
-            
-            # 6.4. 将音频切片并推送到前端
-            i = 0
-            while i + self.chunk <= audio_f32.size:
-                if self.state != State.RUNNING: break # 检查状态以允许打断
-                
-                frame = audio_f32[i : i + self.chunk]
-                event = first_eventpoint if not has_sent_first_frame else None
-                self.parent.put_audio_frame(frame, eventpoint=event)
-                has_sent_first_frame = True # 标记已发送首帧
-                i += self.chunk
-            
-            logger.info(f"FishTTS: 第 {idx}/{len(sentences)} 句完成 (音色: {clone_source_info})，用时 {time.time()-t0:.2f}s")
-        
-        # 7. 全部处理完毕后，发送结束事件
+            # 走到这里：已经进入 data 段
+            data_bytes.extend(chunk)
+
+            # 尝试把 data_bytes 转为 float32 源数据；只在“整样本宽度”边界上消费
+            while True:
+                f32, used = _bytes_to_float32_consume(data_bytes)
+                if used == 0:
+                    break
+                # 重要：先复制 bytes 再删除原片段（上面已复制），避免 BufferError
+                del data_bytes[:used]
+                if f32 is not None and f32.size > 0:
+                    src_buf = f32 if src_buf.size == 0 else np.concatenate([src_buf, f32])
+
+                # 每累计 ≥80ms 源音频：重采样一次 → 16k，并尝试输出 20ms 帧
+                while src_buf.size >= block_src:
+                    block = src_buf[:block_src]
+                    src_buf = src_buf[block_src:]
+                    out16k = resampy.resample(block, fmt["sample_rate"], target_sr)
+                    if out16k.size > 0:
+                        dst_blocks.append(out16k)
+                    _emit_frames_from_blocks()
+
+        # ========= flush：把余量重采样并送完 =========
+        if 'fmt' in locals() and src_buf.size > 0:
+            out16k = resampy.resample(src_buf, fmt["sample_rate"], target_sr)
+            if out16k.size > 0:
+                dst_blocks.append(out16k)
+        _emit_frames_from_blocks()
+
+        # 结束事件
         if self.state == State.RUNNING:
-            self.parent.put_audio_frame(np.zeros(self.chunk, dtype=np.float32), eventpoint={"status": "end", "text": text, "msgevent": textevent})
+            self.parent.put_audio_frame(np.zeros(self.chunk, np.float32),
+                                        {'status': 'end', 'text': text, 'msgevent': textevent})
+
 
 
 ###########################################################################################

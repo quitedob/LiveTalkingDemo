@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交互式AI教育系统项目蓝图</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans SC', sans-serif;
+            background-color: #f8f7f4;
+            color: #3d3d3d;
+            background: linear-gradient(135deg, #f0f7ff 0%, #f8f7f4 100%);
+        }
+        .active-nav {
+            color: #2563eb;
+            border-bottom: 2px solid #2563eb;
+        }
+        .nav-link {
+            transition: color 0.3s ease, border-color 0.3s ease;
+        }
+        .content-section {
+            display: none;
+            animation: fadeIn 0.5s ease-in;
+        }
+        .content-section.active {
+            display: block;
+        }
+        .diagram-node {
+            transition: all 0.3s ease;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .diagram-node:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        .diagram-connector {
+            position: absolute;
+            background-color: #9ca3af;
+            z-index: -1;
+            transition: background-color 0.3s ease;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -2.375rem;
+            top: 0.25rem;
+            width: 1.25rem;
+            height: 1.25rem;
+            background-color: #d1d5db;
+            border-radius: 9999px;
+            border: 4px solid #f8f7f4;
+            transition: all 0.3s ease;
+        }
+        .timeline-item.active::before {
+            background-color: #2563eb;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .architecture-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .architecture-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+        }
+        .table-row {
+            transition: background-color 0.2s ease;
+        }
+        .table-row:hover {
+            background-color: #f9fafb;
+        }
+        .accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .accordion-content.active {
+            max-height: 1000px;
+        }
+        .feature-badge {
+            animation: pulse 2s infinite;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div class="min-h-screen w-full">
+        <!-- Header -->
+        <header class="bg-white/80 backdrop-blur-lg sticky top-0 z-30 shadow-sm">
+            <div class="container mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center">
+                        <div class="bg-blue-600 p-2 rounded-lg mr-3">
+                            <i class="fas fa-brain text-white text-xl"></i>
+                        </div>
+                        <h1 class="text-xl md:text-2xl font-bold text-gray-800">AI教育交互系统 · 项目蓝图</h1>
+                    </div>
+                    <nav class="hidden md:flex items-center space-x-8 text-gray-600">
+                        <a href="#overview" class="nav-link text-base font-medium pb-1">总览</a>
+                        <a href="#tech-stack" class="nav-link text-base font-medium pb-1">技术栈</a>
+                        <a href="#implementation" class="nav-link text-base font-medium pb-1">核心实现</a>
+                        <a href="#roadmap" class="nav-link text-base font-medium pb-1">开发蓝图</a>
+                    </nav>
+                    <div class="md:hidden">
+                        <select id="mobile-nav" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                            <option value="overview">总览</option>
+                            <option value="tech-stack">技术栈</option>
+                            <option value="implementation">核心实现</option>
+                            <option value="roadmap">开发蓝图</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="container mx-auto px-4 py-8 md:py-12">
+            
+            <!-- Section: Overview -->
+            <section id="overview" class="content-section">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-2">项目愿景与战略目标</h2>
+                    <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-600">构建一个先进、多模态、由AI驱动的教育互动平台，核心是简化开发、拥抱异步、解耦服务，为单人开发者在长周期内成功交付项目奠定坚实基础。</p>
+                </div>
+
+                <div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 md:p-8 rounded-xl shadow-md mb-12">
+                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">高层系统架构</h3>
+                    <p class="text-center text-gray-500 mb-8">下图展示了系统各组件间的交互关系。鼠标悬停在节点上可查看简介。</p>
+                    <div id="architecture-diagram" class="relative w-full min-h-[500px] md:min-h-[600px] flex flex-col items-center justify-center space-y-12 md:space-y-0">
+                        <!-- Tiers -->
+                        <div class="w-full flex flex-col md:flex-row justify-around items-center space-y-8 md:space-y-0">
+                            <div class="diagram-node bg-blue-100 text-blue-800 p-4 rounded-lg shadow-sm w-48 text-center" data-info="用户端 (Clients): 用户与系统交互的界面，包括Vue Web应用和微信小程序。">
+                                <i class="fas fa-laptop text-xl mb-2"></i>
+                                <h4 class="font-bold">用户端</h4>
+                                <p class="text-sm mt-1">Web应用 & 小程序</p>
+                            </div>
+                            <div class="diagram-node bg-indigo-100 text-indigo-800 p-4 rounded-lg shadow-sm w-48 text-center" data-info="后端服务 (Backend): 基于Spring Boot的模块化单体应用，处理所有业务逻辑。">
+                                <i class="fas fa-server text-xl mb-2"></i>
+                                <h4 class="font-bold">后端服务</h4>
+                                <p class="text-sm mt-1">Spring Boot应用</p>
+                            </div>
+                            <div class="diagram-node bg-purple-100 text-purple-800 p-4 rounded-lg shadow-sm w-48 text-center" data-info="外部服务 (External): 提供核心AI能力的第三方平台，如阿里云和字节跳动。">
+                                <i class="fas fa-cloud text-xl mb-2"></i>
+                                <h4 class="font-bold">外部服务</h4>
+                                <p class="text-sm mt-1">AI模型平台</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Connectors -->
+                        <div class="absolute top-1/3 w-2/3 h-1 bg-gray-300 rounded-full hidden md:block"></div>
+                        <div class="absolute top-1/3 w-2/3 h-1 bg-gray-300 rounded-full hidden md:block transform rotate-180"></div>
+                        
+                        <div class="w-full flex justify-center mt-12">
+                            <div class="diagram-node bg-green-100 text-green-800 p-4 rounded-lg shadow-sm w-48 text-center" data-info="数据存储 (Persistence): 使用MySQL和阿里云OSS进行数据和文件的持久化存储。">
+                                <i class="fas fa-database text-xl mb-2"></i>
+                                <h4 class="font-bold">数据存储</h4>
+                                <p class="text-sm mt-1">MySQL & OSS</p>
+                            </div>
+                        </div>
+
+                        <!-- Info Box -->
+                        <div id="diagram-info" class="absolute bottom-0 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-sm rounded-lg px-4 py-2 opacity-0 transition-opacity duration-300"></div>
+                    </div>
+                </div>
+
+                <!-- Core Architecture Decisions -->
+                <div class="mb-12">
+                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">核心架构决策</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="architecture-card bg-white p-6 rounded-xl shadow-md">
+                            <div class="flex items-start mb-4">
+                                <div class="bg-blue-100 p-3 rounded-full mr-4">
+                                    <i class="fas fa-cubes text-blue-600 text-xl"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-lg text-gray-800 mb-1">模块化单体架构</h4>
+                                    <p class="text-gray-600">为单人开发者优化，保持单一部署单元的简便性，同时通过模块边界实现高内聚低耦合</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="architecture-card bg-white p-6 rounded-xl shadow-md">
+                            <div class="flex items-start mb-4">
+                                <div class="bg-indigo-100 p-3 rounded-full mr-4">
+                                    <i class="fas fa-sync-alt text-indigo-600 text-xl"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-lg text-gray-800 mb-1">默认异步处理</h4>
+                                    <p class="text-gray-600">应对AI媒体生成的现实需求，构建强大的异步任务管理机制贯穿所有媒体生成流程</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="architecture-card bg-white p-6 rounded-xl shadow-md">
+                            <div class="flex items-start mb-4">
+                                <div class="bg-purple-100 p-3 rounded-full mr-4">
+                                    <i class="fas fa-network-wired text-purple-600 text-xl"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-lg text-gray-800 mb-1">AI服务网关</h4>
+                                    <p class="text-gray-600">解耦业务逻辑与底层模型实现，为项目长期演进和维护奠定坚实基础</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="architecture-card bg-white p-6 rounded-xl shadow-md">
+                            <div class="flex items-start mb-4">
+                                <div class="bg-green-100 p-3 rounded-full mr-4">
+                                    <i class="fas fa-shield-alt text-green-600 text-xl"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-lg text-gray-800 mb-1">安全HTML处理</h4>
+                                    <p class="text-gray-600">后端严格净化AI生成的HTML，使用OWASP库定义安全白名单策略，防范XSS攻击</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Tech Stack -->
+            <section id="tech-stack" class="content-section">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl md:text-4xl font-bold text-gray-900">技术选型</h2>
+                    <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-600">为确保单人开发的可行性与项目的长期维护性，我们选择了以下成熟且高效的技术栈。</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
+                    <!-- Frontend -->
+                    <div class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+                        <div class="flex items-center mb-4">
+                            <div class="bg-sky-100 p-2 rounded-lg mr-3">
+                                <i class="fas fa-desktop text-sky-600 text-xl"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">前端</h3>
+                        </div>
+                        <div class="mb-4">
+                            <span class="inline-block bg-sky-100 text-sky-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">Vue 3</span>
+                            <span class="inline-block bg-sky-100 text-sky-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">Pinia</span>
+                            <span class="inline-block bg-sky-100 text-sky-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">uni-app</span>
+                        </div>
+                        <p class="text-gray-600">采用Vue 3构建响应式Web界面，Pinia进行状态管理，并计划使用uni-app实现跨端到微信小程序，最大化代码复用。</p>
+                    </div>
+                    <!-- Backend -->
+                    <div class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+                        <div class="flex items-center mb-4">
+                            <div class="bg-emerald-100 p-2 rounded-lg mr-3">
+                                <i class="fas fa-server text-emerald-600 text-xl"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">后端</h3>
+                        </div>
+                        <div class="mb-4">
+                            <span class="inline-block bg-emerald-100 text-emerald-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">Spring Boot 3</span>
+                            <span class="inline-block bg-emerald-100 text-emerald-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">JWT</span>
+                        </div>
+                        <p class="text-gray-600">基于Spring Boot 3构建模块化单体应用，使用Spring Security和JWT保障API安全，兼顾开发效率与系统健壮性。</p>
+                    </div>
+                    <!-- Database -->
+                    <div class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+                        <div class="flex items-center mb-4">
+                            <div class="bg-amber-100 p-2 rounded-lg mr-3">
+                                <i class="fas fa-database text-amber-600 text-xl"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">数据存储</h3>
+                        </div>
+                        <div class="mb-4">
+                            <span class="inline-block bg-amber-100 text-amber-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">MySQL</span>
+                            <span class="inline-block bg-amber-100 text-amber-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">OSS</span>
+                        </div>
+                        <p class="text-gray-600">使用MySQL存储结构化数据（用户信息、聊天记录等），并结合阿里云OSS持久化存储所有AI生成的媒体文件。</p>
+                    </div>
+                    <!-- AI Providers -->
+                    <div class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow">
+                        <div class="flex items-center mb-4">
+                            <div class="bg-rose-100 p-2 rounded-lg mr-3">
+                                <i class="fas fa-robot text-rose-600 text-xl"></i>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">AI服务商</h3>
+                        </div>
+                        <div class="mb-4">
+                            <span class="inline-block bg-rose-100 text-rose-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">阿里云通义</span>
+                            <span class="inline-block bg-rose-100 text-rose-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">字节跳动豆包</span>
+                        </div>
+                        <p class="text-gray-600">集成国内顶尖AI平台，通过统一的AI服务网关调用通义和豆包模型，实现多模态内容生成。</p>
+                    </div>
+                </div>
+
+                <!-- Backend Modules -->
+                <div class="bg-white p-6 md:p-8 rounded-xl shadow-md">
+                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">后端模块化结构</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-core</h4>
+                            <p class="text-sm text-gray-600">核心领域模型、工具类、常量定义</p>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-web</h4>
+                            <p class="text-sm text-gray-600">控制器、DTO、异常处理</p>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-security</h4>
+                            <p class="text-sm text-gray-600">Spring Security配置、JWT认证</p>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-user</h4>
+                            <p class="text-sm text-gray-600">用户注册、登录、信息管理</p>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-chat</h4>
+                            <p class="text-sm text-gray-600">聊天会话管理、消息存储</p>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-ai-gateway</h4>
+                            <p class="text-sm text-gray-600">AI服务网关、模型交互</p>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-media</h4>
+                            <p class="text-sm text-gray-600">异步任务管理、OSS集成</p>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-content</h4>
+                            <p class="text-sm text-gray-600">教育视频系统管理</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Core Implementation -->
+            <section id="implementation" class="content-section">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl md:text-4xl font-bold text-gray-900">核心实现方案</h2>
+                    <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-600">深入了解系统关键模块的设计，包括数据模型、AI服务选型和异步任务流程。</p>
+                </div>
+
+                <!-- Database Schema -->
+                <div class="bg-white p-6 md:p-8 rounded-xl shadow-md mb-8">
+                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">数据库实体关系 (ERD)</h3>
+                    <p class="text-center text-gray-500 mb-8">展示了核心业务表的结构与关联。点击表实体可查看其设计详情。</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+                        <div class="space-y-4">
+                            <div class="erd-node diagram-node bg-gray-200 p-3 rounded-lg" data-info="users: 存储用户信息、角色和认证凭据。">
+                                <i class="fas fa-users mr-2"></i>users
+                            </div>
+                            <div class="erd-node diagram-node bg-gray-200 p-3 rounded-lg" data-info="chat_sessions: 记录用户的每一次对话会话。">
+                                <i class="fas fa-comments mr-2"></i>chat_sessions
+                            </div>
+                            <div class="erd-node diagram-node bg-gray-200 p-3 rounded-lg" data-info="chat_messages: 存储会话中的每一条消息，包括发送者、内容和类型。">
+                                <i class="fas fa-comment-dots mr-2"></i>chat_messages
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="erd-node diagram-node bg-blue-200 p-3 rounded-lg font-semibold" data-info="async_tasks: 核心表！追踪所有耗时AI任务（如图像、视频生成）的状态，是实现异步处理的基石。">
+                                <i class="fas fa-tasks mr-2"></i>async_tasks
+                            </div>
+                            <div class="erd-node diagram-node bg-blue-200 p-3 rounded-lg font-semibold" data-info="media_assets: 统一管理所有媒体资源，记录其在OSS上的永久存储路径和元数据。">
+                                <i class="fas fa-file-image mr-2"></i>media_assets
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="erd-node diagram-node bg-green-200 p-3 rounded-lg" data-info="edu_videos: 存储教育视频模块的内容信息，关联到媒体资源表。">
+                                <i class="fas fa-video mr-2"></i>edu_videos
+                            </div>
+                        </div>
+                    </div>
+                    <div id="erd-info" class="mt-8 p-4 bg-gray-50 rounded-lg text-center text-gray-700 min-h-[50px] flex items-center justify-center">
+                        点击上方表实体查看详情
+                    </div>
+                </div>
+
+                <!-- AI Services -->
+                <div class="bg-white p-6 md:p-8 rounded-xl shadow-md mb-8">
+                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">AI服务选型策略</h3>
+                     <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">能力模态</th>
+                                    <th scope="col" class="px-6 py-3">首选方案</th>
+                                    <th scope="col" class="px-6 py-3">价格</th>
+                                    <th scope="col" class="px-6 py-3">选型理由</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="bg-white border-b table-row">
+                                    <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">文本生成</th>
+                                    <td class="px-6 py-4">阿里云通义 qwen3</td>
+                                    <td class="px-6 py-4">云服务稳定</td>
+                                    <td class="px-6 py-4">国内开源模型标杆</td>
+                                </tr>
+                                <tr class="bg-white border-b table-row">
+                                    <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">图像生成</th>
+                                    <td class="px-6 py-4">阿里云通义万相 (wanx-v2)</td>
+                                    <td class="px-6 py-4">按张计费</td>
+                                    <td class="px-6 py-4">API成熟，支持异步任务，提供丰富的风格选项</td>
+                                </tr>
+                                <tr class="bg-white border-b table-row">
+                                    <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">音频生成 (TTS)</th>
+                                    <td class="px-6 py-4">阿里云通义音乐模型 CosyVoice</td>
+                                    <td class="px-6 py-4">速度快质量高</td>
+                                    <td class="px-6 py-4">支持流式输出，音色自然，适合实时对话场景</td>
+                                </tr>
+                                <tr class="bg-white border-b table-row">
+                                    <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">视频生成</th>
+                                    <td class="px-6 py-4">阿里云通义万相 (wan2.2-i2v-plus)</td>
+                                    <td class="px-6 py-4">按秒计费</td>
+                                    <td class="px-6 py-4">图生视频，API可用，异步任务，生成时长5秒</td>
+                                </tr>
+                                <tr class="bg-white table-row">
+                                    <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">视觉理解</th>
+                                    <td class="px-6 py-4">字节跳动豆包视觉模型</td>
+                                    <td class="px-6 py-4">¥0.003/千tokens</td>
+                                    <td class="px-6 py-4">价格低于行业平均85%，适合多模态对话场景</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- AI Service Gateway -->
+                <div class="bg-white p-6 md:p-8 rounded-xl shadow-md">
+                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">AI服务网关接口定义</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">方法</th>
+                                    <th scope="col" class="px-6 py-3">接口</th>
+                                    <th scope="col" class="px-6 py-3">描述</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="bg-white border-b table-row">
+                                    <td class="px-6 py-4 font-mono">Flux&lt;String&gt;</td>
+                                    <td class="px-6 py-4">generateTextStream(String prompt)</td>
+                                    <td class="px-6 py-4">流式文本生成</td>
+                                </tr>
+                                <tr class="bg-white border-b table-row">
+                                    <td class="px-6 py-4 font-mono">String</td>
+                                    <td class="px-6 py-4">generateImageAsync(String prompt)</td>
+                                    <td class="px-6 py-4">异步图像生成，返回内部任务ID</td>
+                                </tr>
+                                <tr class="bg-white border-b table-row">
+                                    <td class="px-6 py-4 font-mono">String</td>
+                                    <td class="px-6 py-4">generateVideoAsync(Long imageAssetId, String prompt)</td>
+                                    <td class="px-6 py-4">异步视频生成，返回内部任务ID</td>
+                                </tr>
+                                <tr class="bg-white border-b table-row">
+                                    <td class="px-6 py-4 font-mono">Flux&lt;ByteBuffer&gt;</td>
+                                    <td class="px-6 py-4">generateAudioStream(String text)</td>
+                                    <td class="px-6 py-4">流式音频生成</td>
+                                </tr>
+                                <tr class="bg-white table-row">
+                                    <td class="px-6 py-4 font-mono">TaskStatus</td>
+                                    <td class="px-6 py-4">getAsyncTaskStatus(String internalTaskId)</td>
+                                    <td class="px-6 py-4">查询异步任务状态</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Section: Roadmap -->
+            <section id="roadmap" class="content-section">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl md:text-4xl font-bold text-gray-900">18个月开发蓝图</h2>
+                    <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-600">项目将分五个阶段进行，通过增量交付控制风险，确保独立开发者能够成功完成目标。</p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-2 bg-white p-6 md:p-8 rounded-xl shadow-md">
+                        <h3 class="text-2xl font-bold text-gray-800 mb-8">阶段性目标</h3>
+                        <div id="timeline-container" class="relative border-l-2 border-gray-200 ml-10">
+                            <!-- Timeline items will be injected by JS -->
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 md:p-8 rounded-xl shadow-md flex flex-col justify-center">
+                        <h3 class="text-2xl font-bold text-center text-gray-800 mb-4">各阶段时间占比</h3>
+                        <div class="chart-container">
+                            <canvas id="roadmap-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Feature Timeline -->
+                <div class="mt-12 bg-white p-6 md:p-8 rounded-xl shadow-md">
+                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">功能演进路线</h3>
+                    <div class="relative">
+                        <!-- Timeline -->
+                        <div class="border-l-4 border-blue-200 ml-4 pl-8 pb-8">
+                            <!-- Phase 1 -->
+                            <div class="mb-10 relative">
+                                <div class="absolute -left-8 top-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                                    <span class="text-white font-bold">1</span>
+                                </div>
+                                <div class="bg-blue-50 p-4 rounded-lg">
+                                    <h4 class="font-bold text-lg text-gray-800 mb-2">阶段一: 核心平台与文本对话</h4>
+                                    <p class="text-gray-600 mb-3">1-4个月</p>
+                                    <ul class="list-disc pl-5 text-gray-600 space-y-1">
+                                        <li>项目初始化与Git仓库配置</li>
+                                        <li>Spring Boot多模块项目搭建</li>
+                                        <li>JWT安全认证实现</li>
+                                        <li>流式文本生成接口开发</li>
+                                        <li>基础聊天UI构建</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                            <!-- Phase 2 -->
+                            <div class="mb-10 relative">
+                                <div class="absolute -left-8 top-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                                    <span class="text-white font-bold">2</span>
+                                </div>
+                                <div class="bg-green-50 p-4 rounded-lg">
+                                    <h4 class="font-bold text-lg text-gray-800 mb-2">阶段二: 图像与音频生成</h4>
+                                    <p class="text-gray-600 mb-3">5-8个月</p>
+                                    <ul class="list-disc pl-5 text-gray-600 space-y-1">
+                                        <li>async_tasks和media_assets表设计</li>
+                                        <li>阿里云OSS集成</li>
+                                        <li>文生图API对接</li>
+                                        <li>TTS流式音频生成</li>
+                                        <li>图片网格组件开发</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                            <!-- Phase 3 -->
+                            <div class="mb-10 relative">
+                                <div class="absolute -left-8 top-1 w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
+                                    <span class="text-white font-bold">3</span>
+                                </div>
+                                <div class="bg-yellow-50 p-4 rounded-lg">
+                                    <h4 class="font-bold text-lg text-gray-800 mb-2">阶段三: 视频生成与HTML渲染</h4>
+                                    <p class="text-gray-600 mb-3">9-12个月</p>
+                                    <ul class="list-disc pl-5 text-gray-600 space-y-1">
+                                        <li>图生视频API对接</li>
+                                        <li>OWASP HTML净化管道</li>
+                                        <li>视频播放组件开发</li>
+                                        <li>安全HTML渲染实现</li>
+                                        <li>四模态生成能力整合</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                            <!-- Phase 4 -->
+                            <div class="mb-10 relative">
+                                <div class="absolute -left-8 top-1 w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
+                                    <span class="text-white font-bold">4</span>
+                                </div>
+                                <div class="bg-orange-50 p-4 rounded-lg">
+                                    <h4 class="font-bold text-lg text-gray-800 mb-2">阶段四: 教育系统与体验优化</h4>
+                                    <p class="text-gray-600 mb-3">13-15个月</p>
+                                    <ul class="list-disc pl-5 text-gray-600 space-y-1">
+                                        <li>教育视频CRUD API开发</li>
+                                        <li>视频浏览页面构建</li>
+                                        <li>内容选择提交功能</li>
+                                        <li>UI/UX优化</li>
+                                        <li>小范围用户测试准备</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            
+                            <!-- Phase 5 -->
+                            <div class="relative">
+                                <div class="absolute -left-8 top-1 w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
+                                    <span class="text-white font-bold">5</span>
+                                </div>
+                                <div class="bg-purple-50 p-4 rounded-lg">
+                                    <h4 class="font-bold text-lg text-gray-800 mb-2">阶段五: 微信小程序与公开发布</h4>
+                                    <p class="text-gray-600 mb-3">16-18个月</p>
+                                    <ul class="list-disc pl-5 text-gray-600 space-y-1">
+                                        <li>uni-app跨端项目搭建</li>
+                                        <li>Vue组件迁移适配</li>
+                                        <li>微信登录集成</li>
+                                        <li>全面功能测试</li>
+                                        <li>生产环境部署上线</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <!-- Footer -->
+        <footer class="bg-gray-800 text-white py-8 mt-12">
+            <div class="container mx-auto px-4">
+                <div class="flex flex-col md:flex-row justify-between items-center">
+                    <div class="mb-4 md:mb-0">
+                        <h3 class="text-xl font-bold">AI教育交互系统</h3>
+                        <p class="text-gray-400 mt-2">构建未来教育体验</p>
+                    </div>
+                    <div class="flex space-x-6">
+                        <a href="#" class="text-gray-300 hover:text-white transition">
+                            <i class="fab fa-github text-xl"></i>
+                        </a>
+                        <a href="#" class="text-gray-300 hover:text-white transition">
+                            <i class="fab fa-weixin text-xl"></i>
+                        </a>
+                        <a href="#" class="text-gray-300 hover:text-white transition">
+                            <i class="fab fa-linkedin text-xl"></i>
+                        </a>
+                    </div>
+                </div>
+                <div class="border-t border-gray-700 mt-8 pt-6 text-center text-gray-400">
+                    <p>© 2025 AI教育交互系统项目蓝图 - 所有权利保留</p>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const sections = document.querySelectorAll('.content-section');
+            const navLinks = document.querySelectorAll('.nav-link');
+            const mobileNav = document.getElementById('mobile-nav');
+
+            function setActiveSection(hash) {
+                const targetHash = hash || '#overview';
+                
+                sections.forEach(section => {
+                    if ('#' + section.id === targetHash) {
+                        section.classList.add('active');
+                    } else {
+                        section.classList.remove('active');
+                    }
+                });
+
+                navLinks.forEach(link => {
+                    if (link.getAttribute('href') === targetHash) {
+                        link.classList.add('active-nav');
+                    } else {
+                        link.classList.remove('active-nav');
+                    }
+                });
+                
+                if (mobileNav.value !== targetHash.substring(1)) {
+                    mobileNav.value = targetHash.substring(1);
+                }
+            }
+
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const targetHash = this.getAttribute('href');
+                    setActiveSection(targetHash);
+                    window.location.hash = targetHash;
+                });
+            });
+            
+            mobileNav.addEventListener('change', function() {
+                const targetHash = '#' + this.value;
+                setActiveSection(targetHash);
+                window.location.hash = targetHash;
+            });
+
+            setActiveSection(window.location.hash);
+
+            // Architecture Diagram Interactivity
+            const diagramNodes = document.querySelectorAll('.diagram-node');
+            const diagramInfoBox = document.getElementById('diagram-info');
+            diagramNodes.forEach(node => {
+                node.addEventListener('mouseenter', function() {
+                    const info = this.getAttribute('data-info');
+                    diagramInfoBox.textContent = info;
+                    diagramInfoBox.style.opacity = '1';
+                });
+                node.addEventListener('mouseleave', function() {
+                    diagramInfoBox.style.opacity = '0';
+                });
+            });
+
+            // ERD Interactivity
+            const erdNodes = document.querySelectorAll('.erd-node');
+            const erdInfoBox = document.getElementById('erd-info');
+            erdNodes.forEach(node => {
+                node.addEventListener('click', function() {
+                    const info = this.getAttribute('data-info');
+                    erdInfoBox.textContent = info;
+                    erdNodes.forEach(n => n.classList.remove('ring-2', 'ring-blue-500'));
+                    this.classList.add('ring-2', 'ring-blue-500');
+                });
+            });
+
+            // Roadmap Timeline
+            const timelineContainer = document.getElementById('timeline-container');
+            const roadmapData = [
+                {
+                    phase: '阶段一 (1-4个月)',
+                    title: '核心平台与文本对话',
+                    description: '搭建功能完备、仅支持文本对话的Web应用。完成基础架构、安全认证和流式文本生成。',
+                    tasks: [
+                        '项目初始化与Git仓库配置',
+                        'Spring Boot多模块项目搭建',
+                        'JWT安全认证实现',
+                        '流式文本生成接口开发',
+                        '基础聊天UI构建'
+                    ]
+                },
+                {
+                    phase: '阶段二 (5-8个月)',
+                    title: '图像与音频生成',
+                    description: '扩展平台能力，支持图片和音频的生成。实现异步任务管理和媒体资源持久化。',
+                    tasks: [
+                        'async_tasks和media_assets表设计',
+                        '阿里云OSS集成',
+                        '文生图API对接',
+                        'TTS流式音频生成',
+                        '图片网格组件开发'
+                    ]
+                },
+                {
+                    phase: '阶段三 (9-12个月)',
+                    title: '视频生成与HTML渲染',
+                    description: '实现技术上最复杂的视频生成和安全的HTML渲染功能，平台具备完整四模态能力。',
+                    tasks: [
+                        '图生视频API对接',
+                        'OWASP HTML净化管道',
+                        '视频播放组件开发',
+                        '安全HTML渲染实现',
+                        '四模态生成能力整合'
+                    ]
+                },
+                {
+                    phase: '阶段四 (13-15个月)',
+                    title: '教育系统与体验优化',
+                    description: '构建教育内容模块，并根据前期反馈打磨核心聊天体验，准备小范围用户测试。',
+                    tasks: [
+                        '教育视频CRUD API开发',
+                        '视频浏览页面构建',
+                        '内容选择提交功能',
+                        'UI/UX优化',
+                        '小范围用户测试准备'
+                    ]
+                },
+                {
+                    phase: '阶段五 (16-18个月)',
+                    title: '微信小程序与公开发布',
+                    description: '使用跨端框架将应用扩展到移动端，并准备正式上线，进入持续迭代周期。',
+                    tasks: [
+                        'uni-app跨端项目搭建',
+                        'Vue组件迁移适配',
+                        '微信登录集成',
+                        '全面功能测试',
+                        '生产环境部署上线'
+                    ]
+                }
+            ];
+
+            roadmapData.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'timeline-item mb-10 ml-4 relative';
+                div.innerHTML = `
+                    <div class="absolute w-3 h-3 bg-gray-200 rounded-full mt-1.5 -left-1.5 border border-white"></div>
+                    <time class="mb-1 text-sm font-normal leading-none text-gray-500">${item.phase}</time>
+                    <h3 class="text-lg font-semibold text-gray-900">${item.title}</h3>
+                    <p class="mb-2 text-base font-normal text-gray-600">${item.description}</p>
+                    <div class="mt-3">
+                        <button class="text-blue-600 text-sm flex items-center toggle-tasks">
+                            查看任务 <i class="fas fa-chevron-down ml-1 text-xs"></i>
+                        </button>
+                        <ul class="list-disc pl-5 mt-2 text-sm text-gray-600 hidden task-list">
+                            ${item.tasks.map(task => `<li>${task}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+                
+                // Add click event for accordion
+                const toggleBtn = div.querySelector('.toggle-tasks');
+                const taskList = div.querySelector('.task-list');
+                
+                toggleBtn.addEventListener('click', () => {
+                    taskList.classList.toggle('hidden');
+                    const icon = toggleBtn.querySelector('i');
+                    if (taskList.classList.contains('hidden')) {
+                        toggleBtn.innerHTML = '查看任务 <i class="fas fa-chevron-down ml-1 text-xs"></i>';
+                    } else {
+                        toggleBtn.innerHTML = '收起任务 <i class="fas fa-chevron-up ml-1 text-xs"></i>';
+                    }
+                });
+                
+                timelineContainer.appendChild(div);
+            });
+            if(timelineContainer.firstChild) {
+                timelineContainer.firstChild.classList.add('active');
+            }
+
+            // Roadmap Chart
+            const ctx = document.getElementById('roadmap-chart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['阶段一', '阶段二', '阶段三', '阶段四', '阶段五'],
+                    datasets: [{
+                        label: '开发月数',
+                        data: [4, 4, 4, 3, 3],
+                        backgroundColor: [
+                            'rgba(59, 130, 246, 0.7)',
+                            'rgba(16, 185, 129, 0.7)',
+                            'rgba(239, 68, 68, 0.7)',
+                            'rgba(245, 158, 11, 0.7)',
+                            'rgba(139, 92, 246, 0.7)'
+                        ],
+                        borderColor: '#f8f7f4',
+                        borderWidth: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed !== null) {
+                                        label += context.parsed + '个月';
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
