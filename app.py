@@ -18,7 +18,9 @@ from api.human_api import register_human_routes
 from api.rag_api import register_rag_routes
 from api.voice_clone_api import register_voice_clone_routes # 您项目原有的克隆API
 # 新增：导入 FishTTS API 路由注册函数
-from api.fishtts_clone_api import register_fishtts_clone_routes 
+from api.fishtts_clone_api import register_fishtts_clone_routes
+# 新增：导入数字人 API 路由注册函数
+from api.avatar_api import register_avatar_routes 
 
 # 导入模型和客户端
 from funasr import AutoModel
@@ -140,6 +142,8 @@ def main():
     register_rag_routes(app)
     # 新增：注册 FishTTS API 路由
     register_fishtts_clone_routes(app)
+    # 新增：注册数字人 API 路由
+    register_avatar_routes(app)
     app.router.add_static('/', path='web') # 提供静态文件服务
     logger.info("所有API路由注册完成。")
 

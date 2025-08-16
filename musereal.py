@@ -247,3 +247,44 @@ class MuseReal(BaseReal):
                 time.sleep(0.04*video_track._queue.qsize()*0.8)
         self.render_event.clear() #end infer process render
         logger.info('musereal thread stop')
+    def reload_avatar(self, new_avatar):
+        """
+        中文注释：热切换数字人素材（MuseTalk）
+        - new_avatar: 由 musereal.load_avatar(avatar_id) 返回的五元组
+          (frame_list_cycle, mask_list_cycle, coord_list_cycle, mask_coords_list_cycle, input_latent_list_cycle)
+        - 设计要点：原子替换/重置索引/清空输出队列，尽量避免渲染线程读到半截数据
+        """
+        try:
+            # 1) 暂停渲染（如果你的 render 实现依赖 render_event，可在此短暂clear）
+            #    不同版本可能未用到 render_event；这里做“尽量兼容”的处理
+            if hasattr(self, "render_event") and hasattr(self.render_event, "clear"):
+                self.render_event.clear()
+
+            # 2) 原子替换素材（五元组结构必须保持一致）
+            (frame_list_cycle,
+             mask_list_cycle,
+             coord_list_cycle,
+             mask_coords_list_cycle,
+             input_latent_list_cycle) = new_avatar
+
+            self.frame_list_cycle = frame_list_cycle
+            self.mask_list_cycle = mask_list_cycle
+            self.coord_list_cycle = coord_list_cycle
+            self.mask_coords_list_cycle = mask_coords_list_cycle
+            self.input_latent_list_cycle = input_latent_list_cycle
+
+            # 3) 重置内部游标/索引
+            self.idx = 0
+
+            # 4) 清空推理/渲染产出队列，避免老帧残留
+            if hasattr(self, "res_frame_queue"):
+                try:
+                    while not self.res_frame_queue.empty():
+                        self.res_frame_queue.get_nowait()
+                except Exception:
+                    pass
+
+        finally:
+            # 5) 恢复渲染
+            if hasattr(self, "render_event") and hasattr(self.render_event, "set"):
+                self.render_event.set()

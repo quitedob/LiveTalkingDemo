@@ -16,6 +16,9 @@ from aiortc.rtcrtpsender import RTCRtpSender
 from api.utils import build_nerfreal, randN
 from logger import logger
 from webrtc import HumanPlayer
+# 中文注释：引入会话管理器，统一登记/反登记，打通“热切换”接口与实际运行会话
+from pkg.avatars.session_manager import get_session_manager
+
 
 # =============== 配置区（可按需调整） ===============
 GRACE_TTL_SECONDS = 120      # 中文注释：断线状态下，会话保留的宽限期（秒）
@@ -57,26 +60,36 @@ async def _schedule_disconnect_cleanup(app: web.Application, sessionid: int):
     """中文注释：在宽限期到期后清理会话（若仍未重连）。"""
     _ensure_runtime_buckets(app)
     # 先取消旧任务，避免重复
-    _clear_deadline(app, sessionid)
+    task_to_cancel = app['disconnect_tasks'].pop(sessionid, None)
+    if task_to_cancel and not task_to_cancel.done():
+        task_to_cancel.cancel()
+    
     _mark_deadline(app, sessionid)
 
     async def _job():
         try:
-            while True:
-                deadline = app['disconnect_deadline'].get(sessionid)
-                if not deadline:
-                    return
-                now = time.time()
-                if now >= deadline:
-                    break
-                await asyncio.sleep(1)
-        except asyncio.CancelledError:
+            deadline = app['disconnect_deadline'].get(sessionid)
+            if not deadline:
+                return
+            
+            await asyncio.sleep(deadline - time.time())
+
+            if time.time() < app.get('disconnect_deadline', {}).get(sessionid, float('inf')):
+                # 中文注释：如果截止时间被更新（比如心跳），则此任务作废
+                return
+
+        except (asyncio.CancelledError, TypeError):
             return
 
-        # 到期后执行真正清理（保留 nerfreals 的策略到此结束）
+        # 到期后执行真正清理
         nerfreals = app['nerfreals']
         pcs = app['pcs']
         session_pc = app['session_pcs'].pop(sessionid, None)
+        
+        # 中文注释：关键：从 SessionManager 里反登记
+        sm = get_session_manager()
+        sm.close_session(str(sessionid))
+        
         if session_pc:
             try:
                 if session_pc in pcs:
@@ -93,7 +106,7 @@ async def _schedule_disconnect_cleanup(app: web.Application, sessionid: int):
                     del session_to_close
                 except Exception:
                     pass
-            gc.collect()
+                gc.collect()
 
         _clear_deadline(app, sessionid)
         logger.info("会话 %s 已在宽限到期后彻底清理", sessionid)
@@ -180,6 +193,9 @@ async def offer(request: web.Request) -> web.Response:
     avatar = app['avatar']
     nerfreals = app['nerfreals']
 
+    # 中文注释：为热切换准备：获取初始 avatar_id
+    initial_avatar_id = str(opt.avatar_id) if hasattr(opt, 'avatar_id') else None
+
     nerfreals[sessionid] = None
     logger.info('创建会话 sessionid=%d, 当前会话数=%d', sessionid, len(nerfreals))
 
@@ -188,6 +204,10 @@ async def offer(request: web.Request) -> web.Response:
     nerfreal = await asyncio.get_event_loop().run_in_executor(None, build_nerfreal, opt, model, avatar, sessionid)
     logger.info("会话 %s: 虚拟人实例构建完成。", sessionid)
     nerfreals[sessionid] = nerfreal
+
+    # 中文注释：关键：将会话登记到 SessionManager（注意使用 str 作为 key）
+    sm = get_session_manager()
+    sm.create_session(str(sessionid), initial_avatar_id)
 
     # 新建 PC 并挂轨
     pc = await _new_pc(app, sessionid)

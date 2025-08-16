@@ -187,6 +187,34 @@
                 <div id="chat-output"></div>
             </div>
 
+            <h3>数字人管理</h3>
+            <div class="form-group">
+                <label for="avatar-select">当前数字人</label>
+                <div style="display: flex; gap: 10px;">
+                    <select id="avatar-select" style="flex-grow: 1;">
+                        <option value="">选择数字人</option>
+                    </select>
+                    <button id="avatar-switch" class="btn-primary">切换数字人</button>
+                </div>
+                <small id="avatar-status" style="margin-top: 5px; display: block;"></small>
+            </div>
+            <div class="form-group">
+                <label for="avatar-file">上传数字人素材</label>
+                <input type="file" id="avatar-file" accept="image/*,video/*,.zip">
+                <label for="avatar-id" style="margin-top:10px;">数字人ID (可选，自动生成)</label>
+                <input type="text" id="avatar-id" placeholder="如：xiaoli0001 (1-16位拼音+1-4位数字)">
+                <button id="avatar-upload" class="btn-secondary" style="margin-top:10px;">创建数字人</button>
+            </div>
+            <div class="form-group">
+                <label for="avatar-delete">删除数字人</label>
+                <div style="display: flex; gap: 10px;">
+                    <select id="avatar-delete-select" style="flex-grow: 1;">
+                        <option value="">选择要删除的数字人</option>
+                    </select>
+                    <button id="avatar-delete" class="btn-danger">删除</button>
+                </div>
+            </div>
+
             <h3>FishTTS 声音克隆</h3>
             <div class="form-group">
                 <label for="fishtts-voice-list">可用克隆音源 (用于驱动数字人)</label>
@@ -274,6 +302,16 @@
             kbFileInput: document.getElementById('kb-file'),
             createKbBtn: document.getElementById('create-kb'),
 
+            // ★★★ 新增: 数字人 DOM 元素 ★★★
+            avatarSelect: document.getElementById('avatar-select'),
+            avatarSwitch: document.getElementById('avatar-switch'),
+            avatarStatus: document.getElementById('avatar-status'),
+            avatarFile: document.getElementById('avatar-file'),
+            avatarId: document.getElementById('avatar-id'),
+            avatarUpload: document.getElementById('avatar-upload'),
+            avatarDeleteSelect: document.getElementById('avatar-delete-select'),
+            avatarDelete: document.getElementById('avatar-delete'),
+
             // ★★★ 新增: FishTTS DOM 元素 ★★★
             fishttsVoiceList: document.getElementById('fishtts-voice-list'),
             fishttsStatus: document.getElementById('fishtts-status'),
@@ -357,6 +395,18 @@
             sessionHeartbeat: (sessionId) => api.fetch('/session/heartbeat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ sessionid: Number(sessionId) }) }),
             reconnect: (payload) => api.fetch('/reconnect', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }),
 
+            // ★★★ 新增: 数字人 API 调用 ★★★
+            getAvatars: (page = 1, pageSize = 20) => api.fetch(`/api/avatars?page=${page}&page_size=${pageSize}`).then(res => res.json()),
+            getAvatarDetail: (id) => api.fetch(`/api/avatars/${id}`).then(res => res.json()),
+            createAvatar: (formData) => api.fetch('/api/avatars', { method: 'POST', body: formData }).then(res => res.json()),
+            deleteAvatar: (id) => api.fetch(`/api/avatars/${id}`, { method: 'DELETE' }),
+            switchAvatar: (sessionId, avatarId) => api.fetch(`/api/sessions/${sessionId}/avatar`, { 
+                method: 'PATCH', 
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ avatar_id: avatarId }) 
+            }).then(res => res.json()),
+            getTaskStatus: (jobId) => api.fetch(`/api/avatars/tasks/${jobId}`).then(res => res.json()),
+
             // ★★★ 新增: FishTTS API 调用 ★★★
             // 注意: 这里的API路径/fishtts/voices与后端路由保持一致
             getFishttsVoices: () => api.fetch('/fishtts/voices').then(res => res.json()),
@@ -432,6 +482,184 @@
                     await api.deleteFishttsVoice(selectedVoice);
                     showToast(`音源 ${selectedVoice} 已删除`);
                     await loadFishttsVoices(); // 重新加载列表
+                } catch (e) {
+                    // api.fetch 中已处理错误 toast
+                }
+            }
+        }
+
+        // --- ★★★ 新增: 数字人核心功能函数 ★★★ ---
+        async function loadAvatars() {
+            try {
+                const data = await api.getAvatars();
+                const avatarSelect = dom.avatarSelect;
+                const avatarDeleteSelect = dom.avatarDeleteSelect;
+                
+                // 重置选择框
+                avatarSelect.innerHTML = '<option value="">选择数字人</option>';
+                avatarDeleteSelect.innerHTML = '<option value="">选择要删除的数字人</option>';
+
+                if (data.avatars && data.avatars.length > 0) {
+                    data.avatars.forEach(avatar => {
+                        // 为选择框添加选项
+                        const selectOption = document.createElement('option');
+                        selectOption.value = avatar.avatar_id;
+                        selectOption.textContent = `${avatar.avatar_id} (${avatar.frames}帧)`;
+                        avatarSelect.appendChild(selectOption);
+
+                        // 为删除框添加选项
+                        const deleteOption = document.createElement('option');
+                        deleteOption.value = avatar.avatar_id;
+                        deleteOption.textContent = `${avatar.avatar_id} (${avatar.frames}帧)`;
+                        avatarDeleteSelect.appendChild(deleteOption);
+                    });
+                    dom.avatarStatus.textContent = `共有 ${data.total} 个数字人。`;
+                } else {
+                    dom.avatarStatus.textContent = '暂无数字人，请先创建。';
+                }
+            } catch (error) {
+                console.error("加载数字人列表失败:", error);
+                dom.avatarStatus.textContent = '加载数字人列表失败。';
+            }
+        }
+
+        async function handleCreateAvatar() {
+            const file = dom.avatarFile.files[0];
+            const avatarId = dom.avatarId.value.trim();
+
+            if (!file) {
+                showToast("请选择一个文件", 'error');
+                return;
+            }
+
+            // 验证avatar_id格式（如果提供）
+            if (avatarId && !avatarId.match(/^[a-z]{1,16}\d{1,4}$/)) {
+                showToast("数字人ID格式不正确，应为1-16位拼音+1-4位数字，如：xiaoli0001", 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            if (avatarId) {
+                formData.append('avatar_id', avatarId);
+            }
+
+            updateStatus('正在创建数字人...', true);
+            try {
+                const result = await api.createAvatar(formData);
+                showToast(`数字人创建任务已提交，任务ID: ${result.job_id}`, 'success');
+                
+                // 清空表单
+                dom.avatarFile.value = '';
+                dom.avatarId.value = '';
+                
+                // 开始轮询任务状态
+                pollTaskStatus(result.job_id, result.avatar_id);
+                
+            } catch (e) {
+                // api.fetch 中已处理错误 toast
+            } finally {
+                updateStatus(null);
+            }
+        }
+
+        async function pollTaskStatus(jobId, avatarId) {
+            const maxAttempts = 60; // 最多轮询60次（5分钟）
+            let attempts = 0;
+            
+            const poll = async () => {
+                try {
+                    const taskInfo = await api.getTaskStatus(jobId);
+                    
+                    if (taskInfo.status === 'SUCCEEDED') {
+                        showToast(`数字人 ${avatarId} 创建成功！`, 'success');
+                        await loadAvatars(); // 重新加载列表
+                        return;
+                    } else if (taskInfo.status === 'FAILED') {
+                        showToast(`数字人 ${avatarId} 创建失败: ${taskInfo.stderr_tail || '未知错误'}`, 'error');
+                        return;
+                    }
+                    
+                    // 继续轮询
+                    attempts++;
+                    if (attempts < maxAttempts) {
+                        setTimeout(poll, 5000); // 5秒后再次检查
+                    } else {
+                        showToast(`数字人 ${avatarId} 创建超时，请稍后检查状态`, 'error');
+                    }
+                } catch (error) {
+                    console.error("轮询任务状态失败:", error);
+                    attempts++;
+                    if (attempts < maxAttempts) {
+                        setTimeout(poll, 5000);
+                    }
+                }
+            };
+            
+            poll();
+        }
+
+        async function handleSwitchAvatar() {
+            // 中文注释：读取选择与当前会话ID
+            const selectedAvatar = dom.avatarSelect.value;
+            const sessionId = state.sessionId;
+
+            if (!selectedAvatar) {
+                showToast("请先选择一个数字人", 'error');
+                return;
+            }
+            if (!sessionId) {
+                showToast("请先建立WebRTC连接", 'error');
+                return;
+            }
+
+            try {
+                // 先“打断说话”，让后端把 TTS/ASR/渲染等队列清干净（兜底）
+                await api.fetch('/interrupt_talk', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ sessionid: sessionId })
+                });
+
+                // 再请求切换（后端内部也会再次“先停”，双保险）
+                const result = await api.switchAvatar(sessionId, selectedAvatar);
+
+                if (result.error && result.error.includes("会话不存在")) {
+                    // 会话丢失：宽限期内试试重连，否则提示重新开始
+                    showToast('会话失效，尝试重连...', 'warning');
+                    try {
+                        await api.fetch('/reconnect', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ sessionid: sessionId })
+                        });
+                        showToast('已重连，请再次点击“切换数字人”。', 'success');
+                    } catch (re) {
+                        showToast('重连失败，请重新建立连接。', 'error');
+                    }
+                    return;
+                }
+
+                showToast(`数字人切换成功: ${result.previous || '无'} -> ${result.current}`, 'success');
+            } catch (e) {
+                // 统一错误提示已在 api.fetch 中处理
+                console.error(e);
+            }
+        }
+
+        async function handleDeleteAvatar() {
+            const selectedAvatar = dom.avatarDeleteSelect.value;
+            
+            if (!selectedAvatar) {
+                showToast("请先选择一个要删除的数字人", 'error');
+                return;
+            }
+
+            if (confirm(`确定要删除数字人 "${selectedAvatar}" 吗？此操作不可恢复。`)) {
+                try {
+                    await api.deleteAvatar(selectedAvatar);
+                    showToast(`数字人 ${selectedAvatar} 已删除`);
+                    await loadAvatars(); // 重新加载列表
                 } catch (e) {
                     // api.fetch 中已处理错误 toast
                 }
@@ -854,9 +1082,15 @@
         dom.uploadFishttsVoiceBtn.addEventListener('click', handleUploadFishttsVoice);
         dom.deleteFishttsVoiceBtn.addEventListener('click', handleDeleteFishttsVoice);
 
+        // ★★★ 新增: 绑定数字人按钮的事件 ★★★
+        dom.avatarUpload.addEventListener('click', handleCreateAvatar);
+        dom.avatarSwitch.addEventListener('click', handleSwitchAvatar);
+        dom.avatarDelete.addEventListener('click', handleDeleteAvatar);
+
         // --- 页面初始化 ---
         initializeRAG();
         loadFishttsVoices(); // ★★★ 新增: 页面加载时获取音源列表
+        loadAvatars(); // ★★★ 新增: 页面加载时获取数字人列表
     });
 </script>
 </body>
