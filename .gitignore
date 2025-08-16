@@ -21,3 +21,4 @@ workspace/log_ngp.txt
 models/
 *.log
 dist
+fishtts_cloned_voices
