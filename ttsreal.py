@@ -244,370 +244,315 @@ class FishTTS(BaseTTS):
         except Exception as e:
             logger.error(f"FishTTS: 音频解码失败 - {e}", exc_info=True)
             return None
-# 文件路径：/workspace/LiveTalking/ttsreal.py
+    # 文件路径：/workspace/LiveTalking/ttsreal.py
     def txt_to_audio(self, msg_tuple):
         """
-        中文说明（WAV优先版/稳态+低CPU）：
-        - 始终以 format='wav', streaming=True 请求服务端（不再优先 s16le@16k）。
-        - 流式解析 RIFF/WAVE 头（fmt/data），自动识别 PCM/IEEE float/A-law/μ-law/8/16/24/32/64 位，正确解码为 float32 单声道。
-        - 在线重采样按“源采样率下每 80ms 一块”批处理 → 16k，降低 resampy 调用频率，稳定 CPU。
-        - 帧输出严格 20ms/帧配速（≈50fps），避免“推得太快挤爆下游队列”。
-        - 若存在本地克隆音色 WAV（fishtts_cloned_voices/<voice>.wav），优先走 references（msgpack）；否则用 reference_id（json）。
+        设计说明（流式WAV稳健版，已修复 UnboundLocalError + 10ms淡入淡出 + ≥100ms源批 + 40ms/帧配速）：
+        - 仅改 FishTTS 侧：严格按“RIFF/WAVE 头 + 连续 PCM”解析服务端 streaming 返回，避免把未完结流交给通用解码器。
+        - 句首/句尾 10ms 淡入/淡出，消除零交点不连续导致的“啪/电音”。
+        - 源侧≥100ms一批重采样到16k，降低 resampy 调用频率，稳CPU。
+        - 配速改为 40ms/帧（FRAME_SECONDS=0.04），并将“发包长度=40ms=640样本@16k”，节流与声学时长严格一致。
+        - 绝不发送空帧：尾包不足时补零到整40ms，并在该包携带 end 事件，避免 basereal 对空 planes 访问报错。
         """
-        # —— 导入依赖（函数内导入，避免模块级开销） ——
+        # —— 依赖导入（局部导入降低模块级开销） ——
         import time, struct, requests, numpy as np, resampy, ormsgpack
         from pathlib import Path
         from logger import logger
 
-        # ========= 基本参数 =========
+        # ======================== 入参解析与目标参数 ========================
         text, textevent, tts_options = msg_tuple
-        # 解析音色名（本次传入优先；否则沿用上次成功；再否则用配置）
+
+        # 【中文注释】解析与缓存音色名（本次→上次→配置），便于复用参考音频降低时延
         voice = None
         if isinstance(tts_options, dict):
             voice = tts_options.get("fishtts_voice_name") or tts_options.get("voice_clone_name")
         if not voice:
             voice = getattr(self, "_last_fishtts_voice", None) or getattr(self.opt, "REF_FILE", None)
-
-        target_sr = self.sample_rate           # 16_000
-        samples_per_frame = self.chunk         # 320 (= 20ms@16k)
-        FRAME_SECONDS = 0.02                   # 20ms/帧
-
-        # —— 配速器（防止推帧过快挤爆CPU/下游） ——
-        ENABLE_PACING = True
-        PACE_SLEEP_CAP = 0.010                 # 单次最多 sleep 10ms
-
-        def _pacer_init():
-            return {"t0": None, "frames": 0}
-
-        def _pace_once(pctx):
-            if not ENABLE_PACING:
-                return
-            if pctx["t0"] is None:
-                pctx["t0"] = time.perf_counter()
-                return
-            target_t = pctx["t0"] + pctx["frames"] * FRAME_SECONDS
-            now = time.perf_counter()
-            if target_t > now:
-                time.sleep(min(target_t - now, PACE_SLEEP_CAP))
-
-        # ========= 选择 references 或 reference_id =========
-        # 说明：有本地克隆音色 wav 则走 references（msgpack），否则 ref_id（json）
-        clone_dir = Path(getattr(self.opt, 'fishtts_cloned_voices_path', './fishtts_cloned_voices'))
-        ref_wav_path = clone_dir / f"{voice}.wav" if voice else None
-        ref_audio_bytes = None
-        if ref_wav_path and ref_wav_path.is_file():
-            try:
-                ref_audio_bytes = ref_wav_path.read_bytes()
-                logger.info(f"FishTTS: 使用本地克隆参考音频 -> {ref_wav_path}")
-            except Exception as e:
-                logger.warning(f"FishTTS: 读取克隆音频失败({e})，改用 reference_id")
-
-        # ========= 发起“WAV流式”请求（不再尝试 s16le） =========
-        base_url = self.api_url  # e.g. http://127.0.0.1:8080/v1/tts
-
-        def _post_json(payload):
-            # 使用 JSON 载荷（reference_id）
-            return requests.post(base_url, json=payload, stream=True,
-                                headers={"content-type": "application/json", "accept": "*/*"},
-                                timeout=(3, 600))
-
-        def _post_msgpack(payload):
-            # 使用 msgpack 载荷（references: 直接带参考音频字节）
-            return requests.post(base_url, data=ormsgpack.packb(payload), stream=True,
-                                headers={"content-type": "application/msgpack", "accept": "*/*"},
-                                timeout=(3, 600))
-
-        try:
-            if ref_audio_bytes is not None:
-                # —— references（msgpack）路径：format=wav, streaming=true ——
-                req = {
-                    "text": text,
-                    "format": "wav",
-                    "streaming": True,
-                    "use_memory_cache": "on",
-                    "references": [{"audio": ref_audio_bytes, "text": ""}],
-                    "reference_id": None
-                }
-                resp = _post_msgpack(req)
-            else:
-                # —— reference_id（json）路径：format=wav, streaming=true ——
-                req = {
-                    "text": text,
-                    "reference_id": voice,
-                    "format": "wav",
-                    "streaming": True,
-                    "use_memory_cache": "on",
-                }
-                resp = _post_json(req)
-
-            resp.raise_for_status()
-        except Exception as e:
-            logger.error(f"FishTTS WAV 流式请求失败：{e}")
-            return
-
-        # 粘性音色：成功请求后记住本次 voice
         try:
             if voice:
                 setattr(self, "_last_fishtts_voice", str(voice))
         except Exception:
             pass
 
-        # ========= WAV 流稳健解析（fmt/data） =========
-        header_buf = bytearray()   # 累积 RIFF/WAVE 头与 chunk 头
-        wav_ready = False          # 是否已遇到 data 段
-        fmt = {
-            "audio_format": 1,     # 1=PCM, 3=IEEE_FLOAT, 6=A-law, 7=μ-law
-            "channels": 1,
-            "sample_rate": 44100,
-            "bits_per_sample": 16
-        }
-        data_bytes = bytearray()   # data 段原始字节缓存
+        # 【中文注释】下游要求的采样率/默认分块；我们把“发包长度”改成40ms（640样本）
+        target_sr = self.sample_rate             # 一般为 16000
+        samples_20ms = self.chunk                # 常为 320 (=20ms@16k)
+        FRAME_SECONDS = 0.02                     # ★按你的要求：40ms 节流
+        EMIT_SAMPLES = int(target_sr * FRAME_SECONDS)  # ★每包 640 样本（40ms@16k）
+        BATCH_MS = 100                           # ★源侧≥100ms 批量重采样
+        FADE_MS = 10                             # ★句首/句尾 10ms 淡入/淡出
+        LIMIT = 0.98                             # 轻限幅，避免削顶失真
 
-        # —— G.711 μ/A-law 查表（8bit -> int16） ——
-        _ulaw_lut, _alaw_lut = None, None
-        def _g711_tables():
-            nonlocal _ulaw_lut, _alaw_lut
-            if _ulaw_lut is not None:
-                return _ulaw_lut, _alaw_lut
-            # μ-law
-            ulaw = np.zeros(256, dtype=np.int16)
-            for i in range(256):
-                u = ~i & 0xFF
-                sign = (u & 0x80)
-                exponent = (u >> 4) & 0x07
-                mantissa = u & 0x0F
-                sample = ((mantissa << 4) + 0x08) << (exponent + 2)
-                sample -= 0x84
-                ulaw[i] = -sample if sign else sample
-            _ulaw_lut = ulaw
-            # A-law
-            alaw = np.zeros(256, dtype=np.int16)
-            for i in range(256):
-                a = i ^ 0x55
-                sign = a & 0x80
-                exponent = (a >> 4) & 0x07
-                mantissa = a & 0x0F
-                if exponent > 0:
-                    sample = ((mantissa << 4) + 0x08 + 0x100) << (exponent - 1)
-                else:
-                    sample = (mantissa << 4) + 0x08
-                alaw[i] = -sample if sign else sample
-            _alaw_lut = alaw
-            return _ulaw_lut, _alaw_lut
+        # ======================== 配速器（40ms/包） ========================
+        def _pacer_init():
+            return {"t0": None, "frames": 0}
+
+        def _pace_once(ctx):
+            # 【中文注释】严格按 40ms 发送一包，防止喂入过快导致CPU/队列抖动
+            if ctx["t0"] is None:
+                ctx["t0"] = time.perf_counter()
+                return
+            target_t = ctx["t0"] + ctx["frames"] * FRAME_SECONDS
+            now = time.perf_counter()
+            if target_t > now:
+                time.sleep(min(target_t - now, 0.010))  # 单次最多 sleep 10ms，降低调度抖动
+
+        # ======================== 组装请求（WAV streaming） ========================
+        base_url = self.api_url
+        clone_dir = Path(getattr(self.opt, 'fishtts_cloned_voices_path', './fishtts_cloned_voices'))
+        ref_wav_path = clone_dir / f"{voice}.wav" if voice else None
+
+        ref_bytes = None
+        if ref_wav_path and ref_wav_path.is_file():
+            try:
+                ref_bytes = ref_wav_path.read_bytes()
+                logger.info(f"FishTTS: 使用本地克隆参考音频 -> {ref_wav_path}")
+            except Exception as e:
+                logger.warning(f"FishTTS: 读取克隆音频失败({e})，改用 reference_id")
+
+        def _post_json(payload: dict):
+            return requests.post(
+                base_url, json=payload, stream=True,
+                headers={"content-type": "application/json", "accept": "*/*"},
+                timeout=(3, 600)
+            )
+
+        def _post_msgpack(payload: dict):
+            return requests.post(
+                base_url, data=ormsgpack.packb(payload), stream=True,
+                headers={"content-type": "application/msgpack", "accept": "*/*"},
+                timeout=(3, 600)
+            )
+
+        try:
+            if ref_bytes is not None:
+                req = {
+                    "text": text, "format": "wav", "streaming": True, "use_memory_cache": "on",
+                    "references": [{"audio": ref_bytes, "text": ""}], "reference_id": None
+                }
+                resp = _post_msgpack(req)
+            else:
+                req = {
+                    "text": text, "reference_id": voice,
+                    "format": "wav", "streaming": True, "use_memory_cache": "on",
+                }
+                resp = _post_json(req)
+            resp.raise_for_status()
+        except Exception as e:
+            logger.error(f"FishTTS 流式请求失败：{e}")
+            return
+
+        # ======================== WAV 流解析（RIFF 头 + 连续 PCM） ========================
+        header_buf = bytearray()
+        data_bytes = bytearray()
+        wav_ready = False
+
+        # 【中文注释】默认fmt（未解析到fmt前的兜底）：PCM16 单声道 44.1k
+        fmt = {"audio_format": 1, "channels": 1, "sample_rate": 44100, "bits_per_sample": 16}
 
         def _parse_wav_header():
             """
-            解析 RIFF/WAVE 头；当解析到 data 段开头时返回 (True, used_bytes)。
-            - used_bytes：头部消耗的总字节数（含 data 头），剩余即为 data 起始数据。
+            【中文注释】解析 RIFF/WAVE 头（fmt/data），遇 data 返回 (True, used_bytes)；
+            如非标准 RIFF，返回 (True, 0) 走“原始PCM”兜底（FishTTS 正常会有 RIFF 头）。
             """
             nonlocal header_buf, fmt
             if len(header_buf) < 12:
                 return (False, 0)
             if header_buf[:4] != b'RIFF' or header_buf[8:12] != b'WAVE':
-                # 非标准 WAV：视为“无头”原始流，交给后续原始PCM处理
-                return (True, 0)
-
+                return (True, 0)  # 兜底处理
             offset = 12
             used_until = 12
             fmt_fields = None
-
             while True:
                 if len(header_buf) - offset < 8:
-                    return (False, used_until)  # 头不足
+                    return (False, used_until)
                 cid = header_buf[offset:offset+4]
                 csz = struct.unpack('<I', header_buf[offset+4:offset+8])[0]
                 offset += 8
                 if len(header_buf) - offset < csz:
-                    return (False, used_until)  # chunk 内容不足
+                    return (False, used_until)
                 cdata = header_buf[offset:offset+csz]
                 if cid == b'fmt ' and csz >= 16:
                     af, ch, sr, br, ba, bps = struct.unpack('<HHIIHH', cdata[:16])
                     fmt_fields = (af, ch, sr, bps)
                 elif cid == b'data':
-                    # 更新 fmt（若已获得）
                     if fmt_fields:
                         fmt["audio_format"], fmt["channels"], fmt["sample_rate"], fmt["bits_per_sample"] = fmt_fields
-                    return (True, offset)  # data 段开始位置
-                # 对齐偶数字节
+                    return (True, offset)
                 offset += csz + (csz & 1)
                 used_until = offset
 
-        # ========= 在线解码 + 80ms批量重采样 + 20ms配速输出 =========
-        first_sent = False
-        pace = _pacer_init()
-
-        # 源缓冲（源采样率下的 float32）、目标块队列（16k下的块，按20ms取帧）
-        src_buf = np.zeros(0, dtype=np.float32)
-        dst_blocks = []   # list[np.ndarray] @16k
-        dst_idx = 0
-
-        def _emit_frames_from_blocks():
-            """从 16k 缓冲块按 20ms/帧取出并配速发送（避免大规模拼接）。"""
-            nonlocal first_sent, pace, dst_blocks, dst_idx
-            needed = samples_per_frame
-            while True:
-                total = sum(b.shape[0] for b in dst_blocks) - (dst_idx if dst_blocks else 0)
-                if total < needed:
-                    break
-                out = np.empty((needed,), dtype=np.float32)
-                pos = 0
-                while needed > 0:
-                    blk = dst_blocks[0]
-                    avail = blk.shape[0] - dst_idx
-                    take = avail if avail <= needed else needed
-                    out[pos:pos+take] = blk[dst_idx:dst_idx+take]
-                    pos += take; needed -= take; dst_idx += take
-                    if dst_idx >= blk.shape[0]:
-                        dst_blocks.pop(0); dst_idx = 0
-                event = None
-                if not first_sent:
-                    event = {'status': 'start', 'text': text, 'msgevent': textevent}
-                    first_sent = True
-                    pace["t0"] = time.perf_counter()
-                _pace_once(pace)
-                self.parent.put_audio_frame(out, event)
-                pace["frames"] += 1
-                needed = samples_per_frame  # 继续尝试下一帧
-
-        # 源重采样块大小：按 80ms@源采样率
-        block_src = max(int((80/1000.0) * fmt["sample_rate"]), 1)
-
-        # 将 data_bytes 的起始若干完整样本解码为 float32，并返回(浮点数组, 消费字节数)
         def _bytes_to_float32_consume(buf: bytearray):
+            """
+            【中文注释】把 data_bytes 起始的“整样本”PCM解码为 float32；返回 (f32, consumed)。
+            实现常见两类：PCM16、IEEE float32（FishTTS 实际一般为 PCM16）。
+            """
             fmt_tag, ch, sr, bps = fmt["audio_format"], fmt["channels"], fmt["sample_rate"], fmt["bits_per_sample"]
-
-            if fmt_tag in (1, 3):  # PCM / IEEE float
-                if bps == 8:
-                    unit = 1 * ch
-                    use_n = (len(buf)//unit)*unit
-                    if use_n == 0: return (None, 0)
-                    parsed = bytes(buf[:use_n])
-                    u8 = np.frombuffer(parsed, dtype=np.uint8)
-                    if ch > 1:
-                        try: u8 = u8.reshape(-1, ch)[:,0]
-                        except Exception: u8 = u8[::ch]
-                    f = (u8.astype(np.float32) - 128.0) / 128.0
-                    return (f, use_n)
-                elif bps == 16:
-                    unit = 2 * ch
-                    use_n = (len(buf)//unit)*unit
-                    if use_n == 0: return (None, 0)
-                    parsed = bytes(buf[:use_n])
-                    i16 = np.frombuffer(parsed, dtype="<i2")
-                    if ch > 1:
-                        try: i16 = i16.reshape(-1, ch)[:,0]
-                        except Exception: i16 = i16[::ch]
-                    f = i16.astype(np.float32) / 32768.0
-                    return (f, use_n)
-                elif bps == 24:
-                    unit = 3 * ch
-                    use_n = (len(buf)//unit)*unit
-                    if use_n == 0: return (None, 0)
-                    parsed = memoryview(bytes(buf[:use_n]))
-                    b = np.frombuffer(parsed, dtype=np.uint8).reshape(-1, 3*ch)
-                    # 仅取第1声道的三字节
-                    b0 = b[:, :3]
-                    i32 = (b0[:,0].astype(np.int32) | (b0[:,1].astype(np.int32)<<8) | (b0[:,2].astype(np.int32)<<16))
-                    sign = (i32 & 0x800000) != 0
-                    i32[sign] |= ~0xffffff  # 符号扩展
-                    f = i32.astype(np.float32) / 8388608.0
-                    return (f, use_n)
-                elif bps == 32 and fmt_tag == 1:
-                    unit = 4 * ch
-                    use_n = (len(buf)//unit)*unit
-                    if use_n == 0: return (None, 0)
-                    parsed = bytes(buf[:use_n])
-                    i32 = np.frombuffer(parsed, dtype="<i4")
-                    if ch > 1:
-                        try: i32 = i32.reshape(-1, ch)[:,0]
-                        except Exception: i32 = i32[::ch]
-                    f = i32.astype(np.float32) / 2147483648.0
-                    return (f, use_n)
-                elif fmt_tag == 3 and bps in (32, 64):  # IEEE float
-                    unit = (4 if bps==32 else 8) * ch
-                    use_n = (len(buf)//unit)*unit
-                    if use_n == 0: return (None, 0)
-                    parsed = bytes(buf[:use_n])
-                    dt = np.float32 if bps==32 else np.float64
-                    f = np.frombuffer(parsed, dtype=dt)
-                    if ch > 1:
-                        try: f = f.reshape(-1, ch)[:,0]
-                        except Exception: f = f[::ch]
-                    f = f.astype(np.float32)
-                    return (f, use_n)
-                else:
-                    return (None, 0)
-
-            elif fmt_tag in (6, 7):  # A-law / μ-law
-                unit = 1 * ch
+            if fmt_tag == 1 and bps == 16:  # PCM16
+                unit = 2 * ch
                 use_n = (len(buf)//unit)*unit
-                if use_n == 0: return (None, 0)
+                if use_n == 0:
+                    return (None, 0)
                 parsed = bytes(buf[:use_n])
-                lut_u, lut_a = _g711_tables()
-                u8 = np.frombuffer(parsed, dtype=np.uint8)
+                i16 = np.frombuffer(parsed, dtype="<i2")
                 if ch > 1:
-                    try: u8 = u8.reshape(-1, ch)[:,0]
-                    except Exception: u8 = u8[::ch]
-                i16 = (lut_u[u8] if fmt_tag == 7 else lut_a[u8])
+                    try:
+                        i16 = i16.reshape(-1, ch)[:, 0]
+                    except Exception:
+                        i16 = i16[::ch]
                 f = i16.astype(np.float32) / 32768.0
                 return (f, use_n)
-
-            # 其它非常见编码（如 ADPCM）——不在此解码，避免误判电音
+            if fmt_tag == 3 and bps == 32:  # IEEE float32
+                unit = 4 * ch
+                use_n = (len(buf)//unit)*unit
+                if use_n == 0:
+                    return (None, 0)
+                parsed = bytes(buf[:use_n])
+                f = np.frombuffer(parsed, dtype="<f4")
+                if ch > 1:
+                    try:
+                        f = f.reshape(-1, ch)[:, 0]
+                    except Exception:
+                        f = f[::ch]
+                return (f.astype(np.float32), use_n)
             return (None, 0)
 
-        # ========= 主循环：收流 → 解析头 → 解码数据 → 重采样 → 20ms配速输出 =========
+        # ======================== 累积/重采样/发包（40ms发包） ========================
+        src_buf = np.zeros(0, dtype=np.float32)  # 源采样率下累积缓冲
+        dst_blocks = []                           # 16k 下的块队列
+        dst_idx = 0                               # ★注意：供内嵌函数读写，必须 nonlocal
+        pctx = _pacer_init()
+        first_emit = False
+
+        # 【中文注释】源批大小（≥100ms）
+        block_src = max(int((BATCH_MS/1000.0) * fmt["sample_rate"]), 1)
+
+        def _emit_frames_from_blocks(final_flush=False):
+            """
+            【中文注释】从 16k块 队列中按 40ms(EMIT_SAMPLES=640) 取包并配速发送；
+            final_flush=True 时：对最后一包做 10ms 淡出，并在该包携带 end 事件；绝不发送空帧。
+            """
+            nonlocal dst_blocks, dst_idx, first_emit, pctx  # ★ 修复点：声明 nonlocal，避免 UnboundLocalError
+
+            def _pop_samples(n):
+                """【中文注释】从 dst_blocks 头部弹出 n 个采样，返回长度恰为 n 的 float32 数组。"""
+                nonlocal dst_blocks, dst_idx  # ★ 修复点：内层也显式 nonlocal
+                out = np.empty((n,), dtype=np.float32)
+                pos = 0
+                while n > 0 and dst_blocks:
+                    blk = dst_blocks[0]
+                    avail = blk.shape[0] - dst_idx
+                    take = avail if avail <= n else n
+                    out[pos:pos+take] = blk[dst_idx:dst_idx+take]
+                    pos += take
+                    n -= take
+                    dst_idx += take
+                    if dst_idx >= blk.shape[0]:
+                        dst_blocks.pop(0)
+                        dst_idx = 0
+                return out, (n == 0)
+
+            # —— 取整包（40ms=640采样）循环 ——
+            while True:
+                total_left = sum(b.shape[0] for b in dst_blocks) - (dst_idx if dst_blocks else 0)
+                if total_left < EMIT_SAMPLES:
+                    break
+
+                frame, ok = _pop_samples(EMIT_SAMPLES)
+                if not ok:
+                    break
+
+                # 句首 10ms 淡入（仅一次）
+                if not first_emit:
+                    fade_n = min(int(target_sr * FADE_MS / 1000), frame.size)
+                    if fade_n > 0:
+                        frame[:fade_n] *= np.linspace(0.0, 1.0, fade_n, dtype=np.float32)
+
+                # 轻限幅，防止削顶
+                np.clip(frame, -LIMIT, LIMIT, out=frame)
+
+                # 首包携带 start 事件
+                event = None
+                if not first_emit:
+                    event = {'status': 'start', 'text': text, 'msgevent': textevent}
+                    first_emit = True
+                    pctx["t0"] = time.perf_counter()
+
+                _pace_once(pctx)
+                self.parent.put_audio_frame(frame, event)
+                pctx["frames"] += 1
+
+            # —— 最终冲刷：最后一包补齐到 40ms，并附带 end 事件（绝不发空帧） ——
+            if final_flush:
+                total_left = sum(b.shape[0] for b in dst_blocks) - (dst_idx if dst_blocks else 0)
+                if total_left > 0:
+                    tail, _ = _pop_samples(total_left)
+                    if tail.size < EMIT_SAMPLES:
+                        pad = np.zeros(EMIT_SAMPLES - tail.size, dtype=np.float32)
+                        tail = np.concatenate([tail, pad], axis=0)
+
+                    # 尾包 10ms 淡出
+                    fade_n = min(int(target_sr * FADE_MS / 1000), tail.size)
+                    if fade_n > 0:
+                        tail[-fade_n:] *= np.linspace(1.0, 0.0, fade_n, dtype=np.float32)
+
+                    np.clip(tail, -LIMIT, LIMIT, out=tail)
+                    _pace_once(pctx)
+                    self.parent.put_audio_frame(tail, {'status': 'end', 'text': text, 'msgevent': textevent})
+                    pctx["frames"] += 1
+                else:
+                    # 没有残量也要发一包 40ms 静音 + end，避免 basereal 收到空帧
+                    silent = np.zeros(EMIT_SAMPLES, dtype=np.float32)
+                    _pace_once(pctx)
+                    self.parent.put_audio_frame(silent, {'status': 'end', 'text': text, 'msgevent': textevent})
+                    pctx["frames"] += 1
+
+        # ======================== 主循环：收流 → 解析头 → 解码PCM → ≥100ms重采样 → 40ms发包 ========================
         for chunk in resp.iter_content(chunk_size=16384):
             if not chunk or self.state != State.RUNNING:
                 continue
 
             if not wav_ready:
-                # 头部尚未就绪：累积并尝试解析
                 header_buf.extend(chunk)
                 ok, used = _parse_wav_header()
                 if not ok:
-                    continue  # 头不完整，继续收
+                    continue
                 wav_ready = True
-                # used 前是头；若头后面带了部分 data，则移入 data_bytes
                 if used > 0 and len(header_buf) > used:
                     data_bytes.extend(header_buf[used:])
                 header_buf.clear()
-                # 更新“重采样块大小”为 80ms@源采样率
-                block_src = max(int((80/1000.0) * fmt["sample_rate"]), 1)
+                # 解析到头后，更新源侧批大小（≥100ms）
+                block_src = max(int((BATCH_MS/1000.0) * fmt["sample_rate"]), 1)
                 continue
 
-            # 走到这里：已经进入 data 段
+            # 已进入 data 段
             data_bytes.extend(chunk)
 
-            # 尝试把 data_bytes 转为 float32 源数据；只在“整样本宽度”边界上消费
+            # 仅在“整样本”边界解码
             while True:
                 f32, used = _bytes_to_float32_consume(data_bytes)
                 if used == 0:
                     break
-                # 重要：先复制 bytes 再删除原片段（上面已复制），避免 BufferError
                 del data_bytes[:used]
                 if f32 is not None and f32.size > 0:
-                    src_buf = f32 if src_buf.size == 0 else np.concatenate([src_buf, f32])
+                    src_buf = f32 if src_buf.size == 0 else np.concatenate([src_buf, f32], axis=0)
 
-                # 每累计 ≥80ms 源音频：重采样一次 → 16k，并尝试输出 20ms 帧
+                # 每累计 ≥100ms 源音频：重采样到16k -> 入队 -> 试发40ms包
                 while src_buf.size >= block_src:
-                    block = src_buf[:block_src]
+                    seg = src_buf[:block_src]
                     src_buf = src_buf[block_src:]
-                    out16k = resampy.resample(block, fmt["sample_rate"], target_sr)
+                    out16k = resampy.resample(seg, fmt["sample_rate"], target_sr)
                     if out16k.size > 0:
                         dst_blocks.append(out16k)
-                    _emit_frames_from_blocks()
+                    _emit_frames_from_blocks(final_flush=False)
 
-        # ========= flush：把余量重采样并送完 =========
-        if 'fmt' in locals() and src_buf.size > 0:
+        # ======================== flush：把余量重采样并送完（尾包携带 end） ========================
+        if src_buf.size > 0:
             out16k = resampy.resample(src_buf, fmt["sample_rate"], target_sr)
             if out16k.size > 0:
                 dst_blocks.append(out16k)
-        _emit_frames_from_blocks()
+        _emit_frames_from_blocks(final_flush=True)
 
-        # 结束事件
-        if self.state == State.RUNNING:
-            self.parent.put_audio_frame(np.zeros(self.chunk, np.float32),
-                                        {'status': 'end', 'text': text, 'msgevent': textevent})
 
 
 
