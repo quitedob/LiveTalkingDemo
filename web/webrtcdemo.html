@@ -580,13 +580,26 @@
             setControlsDisabled(true);
             updateStatus('正在创建数字人，请稍候...', true);
 
-            const formData = new FormData();
-            formData.append('file', file);
-            if (avatarId) {
-                formData.append('avatar_id', avatarId);
-            }
-
             try {
+                // 1) 生成前：尽量停止后台的数字人说话（当前会话）
+                const sessionId = state.sessionId;
+                if (sessionId) {
+                    try {
+                        await api.interruptTalk(sessionId);
+                        // 给后端一点缓冲时间
+                        await new Promise(r => setTimeout(r, 300));
+                    } catch (e) {
+                        console.warn('interruptTalk 调用失败，继续生成流程:', e);
+                    }
+                }
+
+                // 2) 上传并发起生成任务
+                const formData = new FormData();
+                formData.append('file', file);
+                if (avatarId) {
+                    formData.append('avatar_id', avatarId);
+                }
+
                 const result = await api.createAvatar(formData);
                 showToast(`数字人创建任务已提交，任务ID: ${result.job_id}`, 'success');
                 dom.avatarFile.value = '';

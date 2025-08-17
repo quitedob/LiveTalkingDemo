@@ -42,66 +42,59 @@ def get_avatar_session_manager():
 async def create_avatar(request: Request) -> Response:
     """
     POST /api/avatars - 创建数字人
-    
-    请求体：multipart/form-data
-    - file: 必填，图片序列ZIP/单图/视频或已存在目录路径字符串
-    - avatar_id: 可选，若不填则服务端按规则生成可用ID
-    
+
+    表单(multipart/form-data):
+    - file: 必填，图片序列ZIP/单图/视频
+    - avatar_id: 可选，不填则服务端生成
+
     返回：202 Accepted {avatar_id, job_id, status: PENDING}
     """
     try:
-        # 解析multipart表单数据
+        # 1) 解析表单
         reader = await request.multipart()
-        
         file_data = None
+        filename = None
         avatar_id = None
-        
+
         async for field in reader:
             if field.name == 'file':
-                # 处理文件上传
                 file_data = await field.read()
                 filename = field.filename
             elif field.name == 'avatar_id':
-                # 处理avatar_id参数
                 avatar_id = await field.text()
-        
+
         if not file_data:
-            return web.json_response(
-                {"error": "缺少必需的文件参数"},
-                status=400
-            )
-        
-        # 创建临时文件
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as temp_file:
-            temp_file.write(file_data)
-            temp_file_path = temp_file.name
-        
-        try:
-            # 获取生成器实例
-            generator = get_avatar_generator()
-            
-            # 创建数字人任务
-            result = await generator.create_avatar(temp_file_path, avatar_id)
-            
-            return web.json_response(
-                result,
-                status=202
-            )
-            
-        finally:
-            # 清理临时文件
-            try:
-                os.unlink(temp_file_path)
-            except:
-                pass
-                
+            return web.json_response({"error": "缺少必需的文件参数"}, status=400)
+
+        # 2) 将临时文件“落到持久目录”，避免异步任务还未读就被删
+        #    —— 修复点：不再用 NamedTemporaryFile + finally 删除
+        from pathlib import Path
+        import time, os, re
+
+        base_dir = Path(__file__).resolve().parents[1]  # /workspace/LiveTalking/api -> /workspace/LiveTalking
+        uploads_dir = base_dir / "data" / "uploads"
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+
+        # 简单清理 filename，避免奇怪字符
+        safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', filename or f'upload_{int(time.time())}')
+        ts = int(time.time() * 1000)
+        persistent_path = uploads_dir / f"{ts}_{safe_name}"
+
+        with open(persistent_path, "wb") as f:
+            f.write(file_data)
+
+        # 3) 交给生成器（这里传的是“持久路径”）
+        generator = get_avatar_generator()
+        result = await generator.create_avatar(str(persistent_path), avatar_id)
+
+        # 4) 立刻响应任务受理
+        return web.json_response(result, status=202)
+
+        # 5) 注意：文件清理交给生成器侧在任务完成后自行决定（或做后台定期清理）
     except Exception as e:
         logger.error(f"创建数字人失败: {e}", exc_info=True)
-        return web.json_response(
-            {"error": str(e)},
-            status=500
-        )
-
+        return web.json_response({"error": str(e)}, status=500)
+        
 async def list_avatars(request: Request) -> Response:
     """
     GET /api/avatars - 获取数字人列表
