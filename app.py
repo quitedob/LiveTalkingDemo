@@ -70,7 +70,7 @@ def main():
     parser.add_argument('--listenport', type=int, default=8010, help="Web服务监听端口")
     parser.add_argument('--ollama-url', type=str, default='http://localhost:11434/api/chat', help="Ollama聊天API的URL")
     parser.add_argument('--ollama-model', type=str, default='gemma3:4b', help="在Ollama中使用的模型名称")
-    parser.add_argument('--ollama-system-prompt', type=str, default='你的身份是芝麻编程老师请你按照你的身份说话，禁止输出表情符号。/nothink', help="给Ollama模型的系统提示")
+    parser.add_argument('--ollama-system-prompt', type=str, default='你的身份是数字人请你按照你的身份说话，禁止输出表情符号。/nothink', help="给Ollama模型的系统提示")
     parser.add_argument('--cert-path', default='/workspace/ssh/i.zmbc100.com_bundle.crt', help="SSL证书链文件的路径")
     parser.add_argument('--key-path', default='/workspace/ssh/i.zmbc100.com.key.noenc.pem', help="SSL私钥文件的路径")
     parser.add_argument('--cosyvoice-model-path', type=str, default='pretrained_models/CosyVoice2-0.5B', help="Path to the CosyVoice pretrained model directory.")

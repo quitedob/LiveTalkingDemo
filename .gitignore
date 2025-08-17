@@ -21,4 +21,5 @@ workspace/log_ngp.txt
 models/
 *.log
 dist
-fishtts_cloned_voices
+fishtts_cloned_voices/
+.ipynb_checkpoints/
