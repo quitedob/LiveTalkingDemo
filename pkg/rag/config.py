@@ -21,7 +21,7 @@ KB_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9]{3,20}$")
 # MAX_FILE_SIZE_MB 单个上传文件的最大大小 (MB)
 MAX_FILE_SIZE_MB = 50 # 将此值上调以匹配 app.py
 # ALLOWED_EXTENSIONS 允许上传的文件扩展名
-ALLOWED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".md", ".ppt", ".pptx"]
+ALLOWED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".md", ".ppt", ".pptx", ".png", ".jpg", ".jpeg"]
 
 # --- RAG 核心配置 ---
 # DEFAULT_RAG_MODE 默认是否开启RAG模式

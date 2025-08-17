@@ -16,7 +16,7 @@ import re                    # 清洗HTTP错误reason，去掉换行
 import subprocess            # 子进程运行 ocrmypdf
 import time                  # 原子写入：定义临时 sidecar 文件路径
 from pathlib import Path
-
+import ollama
 import ocrmypdf              # 存在性/版本校验（不直接走其Python API）
 from aiohttp import web
 
@@ -26,6 +26,57 @@ from pkg.rag.file_converter import convert_to_pdf
 
 
 class FileProcessor:
+
+     # ★★★ 新增：Ollama 图片处理函数 ★★★
+    @staticmethod
+    def _process_image_with_ollama_sync(image_path: Path, txt_path: Path):
+        """
+        [同步执行] 使用 Ollama 的 gemma3:12b 模型识别图片内容并保存为文本。
+        这个函数是阻塞的，应当在 asyncio 的线程池中执行。
+        
+        :param image_path: 输入的图片文件路径。
+        :param txt_path: 输出的文本文件路径。
+        """
+        logger.info(f"开始使用 Ollama 识别图片: {image_path}")
+        try:
+            # 准备向 Ollama 发送的消息
+            # 这里的提示词至关重要，它决定了模型输出内容的详尽程度。
+            # 我们要求它尽可能详细地描述所有内容，以便为RAG提供丰富的上下文。
+            messages = [
+                {
+                    'role': 'user',
+                    'content': '请详细描述这张图片中的所有内容，包括场景、物体、人物、动作、氛围以及任何可辨识的文字。输出应为一段连贯的中文描述性文本,开头为该文件描述了',
+                    'images': [str(image_path)] # 直接传递文件路径
+                }
+            ]
+
+            # 调用 Ollama 服务 (这是一个同步阻塞调用)
+            # 注意：请确保您的 Ollama 服务已启动，并且 gemma3:12b 模型已拉取。
+            # ollama run gemma3:12b
+            response = ollama.chat(
+                model='gemma3:12b', # 使用您指定的高级模型
+                messages=messages
+            )
+
+            # 提取并保存识别出的文本
+            description = response['message']['content']
+            if not description:
+                raise ValueError("Ollama 模型返回了空描述。")
+
+            with open(txt_path, 'w', encoding='utf-8') as f:
+                f.write(description)
+            
+            logger.info(f"图片识别成功，描述已保存到: {txt_path}")
+
+        except FileNotFoundError:
+            logger.error(f"Ollama 识别失败：图片文件未找到 at {image_path}")
+            raise
+        except Exception as e:
+            logger.error(f"调用 Ollama 服务时发生错误: {e}", exc_info=True)
+            # 向上抛出异常，让上层调用者知道处理失败
+            raise RuntimeError(f"Ollama 图片识别失败: {e}") from e
+
+
     """
     文件处理类：保存上传文件 -> 处理为 TXT（文本/转换后PDF/经OCR）
     """

@@ -703,10 +703,12 @@
                 return;
             }
             
-            const allowedExtensions = ['.pdf', '.docx', '.doc', '.pptx', '.ppt', '.txt', '.md'];
+            // ★★★ 修改点 1: 扩展允许的文件类型列表 ★★★
+            const allowedExtensions = ['.pdf', '.docx', '.doc', '.pptx', '.ppt', '.txt', '.md', '.png', '.jpg', '.jpeg'];
             const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
             if (!allowedExtensions.includes(fileExtension)) {
-                showToast('文件格式不支持。请上传 PDF, Word, PPT, 或 TXT/MD 文件。', 'error');
+                // ★★★ 修改点 2: 更新用户提示信息 ★★★
+                showToast('文件格式不支持。请上传图片、PDF、Word、PPT 或 TXT/MD 文件。', 'error');
                 dom.kbFileInput.value = ''; // 重置文件输入
                 return;
             }
@@ -1024,11 +1026,13 @@
             const file = dom.kbFileInput.files[0];
             if (!file) return;
 
-            const allowedExtensions = ['.pdf', '.docx', '.doc', '.pptx', '.ppt', '.txt', '.md'];
+            // ★★★ 修改点 3: 扩展允许的文件类型列表 ★★★
+            const allowedExtensions = ['.pdf', '.docx', '.doc', '.pptx', '.ppt', '.txt', '.md', '.png', '.jpg', '.jpeg'];
             const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
 
             if (!allowedExtensions.includes(fileExtension)) {
-                showToast('文件格式不支持。请上传 PDF, Word, PPT, 或 TXT/MD 文件。', 'error');
+                // ★★★ 修改点 4: 更新用户提示信息 ★★★
+                showToast('文件格式不支持。请上传图片、PDF、Word、PPT 或 TXT/MD 文件。', 'error');
                 dom.kbFileInput.value = '';
             }
         });

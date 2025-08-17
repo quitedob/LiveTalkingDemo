@@ -3,7 +3,7 @@
 import asyncio
 import json
 import re
-
+import ollama
 from aiohttp import web
 
 from api.utils import transcribe_audio
@@ -32,6 +32,44 @@ async def _llm_to_sentence_stream(llm_stream):
     if buffer.strip():
         yield buffer.strip()
 
+async def describe_image(request: web.Request):
+    """
+    POST /vision/describe - 接收图片和可选提示，返回模型的文字描述。
+    这是一个不与数字人直接绑定的通用视觉 API。
+    """
+    try:
+        # 使用 multipart/form-data 来接收文件和文本字段
+        reader = await request.multipart()
+        image_bytes = None
+        prompt = "请详细描述这张图片的内容。" # 默认提示词
+        model = "gemma3:12b" # 默认模型
+
+        async for field in reader:
+            if field.name == 'image':
+                image_bytes = await field.read()
+            elif field.name == 'prompt':
+                prompt = await field.text()
+            elif field.name == 'model':
+                model = await field.text()
+
+        if not image_bytes:
+            return web.json_response({"error": "缺少 'image' 文件字段"}, status=400)
+
+        # 在线程池中执行同步的 Ollama 调用，避免阻塞 aiohttp 的事件循环
+        loop = asyncio.get_event_loop()
+        description = await loop.run_in_executor(
+            None, 
+            _describe_image_sync, 
+            image_bytes, 
+            prompt, 
+            model
+        )
+
+        return web.json_response({"description": description})
+
+    except Exception as e:
+        logger.exception('describe_image 接口异常:')
+        return web.json_response({"error": str(e)}, status=500)
 
 async def human(request):
     """
@@ -199,3 +237,4 @@ def register_human_routes(app):
     app.router.add_post("/human", human)
     app.router.add_post("/humanaudio", humanaudio)
     app.router.add_post("/audio_chat", audio_chat)
+    app.router.add_post("/vision/describe", describe_image)

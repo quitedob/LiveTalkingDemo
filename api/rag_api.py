@@ -47,18 +47,23 @@ async def create_kb(request):
         task_id = f"upload_{kb_name}_{original_filename}"
         request.app['tasks'][task_id] = {"status": "processing", "message": "开始处理文件..."}
         
+        # ★★★ 这里是核心修改点 ★★★
         async def process_task():
             try:
+                # 1. 保存并处理文件（图片转文字等），这个过程是异步的
                 txt_path = await FileProcessor.save_and_process_file(file_bytes, original_filename, kb_name)
-                request.app['tasks'][task_id]['message'] = "文本提取完成，正在向量化..."
+                request.app['tasks'][task_id]['message'] = "文本提取完成，正在向量化入库..."
                 
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(
-                    None, 
-                    lambda: KnowledgeBase(kb_name).add_txt_file(txt_path, original_filename)
-                )
+                # 2. 直接 await 异步的 add_txt_file 函数，不再使用 run_in_executor
+                #    因为 add_txt_file 内部已经妥善处理了异步和线程池调用
+                kb_instance = KnowledgeBase(kb_name)
+                await kb_instance.add_txt_file(txt_path, original_filename)
                 
+                # 3. (新增日志) 明确记录向量化入库完成
+                logger.info(f"知识库 '{kb_name}' 的文件 '{original_filename}' 向量化入库完成。")
+
                 request.app['tasks'][task_id] = {"status": "success", "message": "知识库创建成功"}
+                # 清理中间生成的txt文件
                 if txt_path.exists():
                     txt_path.unlink()
             except Exception as e:
@@ -72,6 +77,7 @@ async def create_kb(request):
     except Exception as e:
         logger.exception("创建知识库API异常")
         return web.json_response({"error": f"服务器内部错误: {e}"}, status=500)
+
 
 async def delete_kb(request):
     kb_name = request.match_info.get('name')
