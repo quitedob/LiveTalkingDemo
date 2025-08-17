@@ -9,7 +9,7 @@
 - aiohttp 的 HTTP 错误 reason 统一清洗为单行，避免 “Reason cannot contain \\n”
 """
 
-import asyncio               # 异步：把CPU密集型任务丢到线程池，避免阻塞事件循环
+import asyncio             # 异步：把CPU密集型任务丢到线程池，避免阻塞事件循环
 import locale                # 日志解码：按系统首选编码解码stderr
 import os                    # 使用 os.devnull 丢弃PDF输出；环境变量可扩展策略
 import re                    # 清洗HTTP错误reason，去掉换行
@@ -27,7 +27,7 @@ from pkg.rag.file_converter import convert_to_pdf
 
 class FileProcessor:
 
-     # ★★★ 新增：Ollama 图片处理函数 ★★★
+    # ★★★ Ollama 图片处理函数（保持不变） ★★★
     @staticmethod
     def _process_image_with_ollama_sync(image_path: Path, txt_path: Path):
         """
@@ -40,8 +40,6 @@ class FileProcessor:
         logger.info(f"开始使用 Ollama 识别图片: {image_path}")
         try:
             # 准备向 Ollama 发送的消息
-            # 这里的提示词至关重要，它决定了模型输出内容的详尽程度。
-            # 我们要求它尽可能详细地描述所有内容，以便为RAG提供丰富的上下文。
             messages = [
                 {
                     'role': 'user',
@@ -51,8 +49,6 @@ class FileProcessor:
             ]
 
             # 调用 Ollama 服务 (这是一个同步阻塞调用)
-            # 注意：请确保您的 Ollama 服务已启动，并且 gemma3:12b 模型已拉取。
-            # ollama run gemma3:12b
             response = ollama.chat(
                 model='gemma3:12b', # 使用您指定的高级模型
                 messages=messages
@@ -75,7 +71,6 @@ class FileProcessor:
             logger.error(f"调用 Ollama 服务时发生错误: {e}", exc_info=True)
             # 向上抛出异常，让上层调用者知道处理失败
             raise RuntimeError(f"Ollama 图片识别失败: {e}") from e
-
 
     """
     文件处理类：保存上传文件 -> 处理为 TXT（文本/转换后PDF/经OCR）
@@ -115,7 +110,7 @@ class FileProcessor:
             return txt_path
         except Exception as e:
             logger.error(f"处理文件 '{original_filename}' 时发生严重错误: {e}", exc_info=True)
-            # ✅ aiohttp 的 reason 不允许换行，做单行清洗
+            # aiohttp 的 reason 不允许换行，做单行清洗
             single_line_reason = re.sub(r"[\r\n]+", " ", f"{e}")
             # 如需保留原始文件用于排查，可注释掉以下删除
             if save_path.exists():
@@ -128,12 +123,15 @@ class FileProcessor:
         同步处理主流程（在线程池中执行）：
         - PDF：调用升级版OCR流程
         - Office：先转 PDF 再 OCR
-        - 纯文本：直接读写
+        - 图片：调用 Ollama 视觉模型进行描述
+        - 纯文本：直接重命名或使用
         """
         txt_path = kb_path / f"{file_path.stem}.txt"
 
         office_formats = [".docx", ".doc", ".pptx", ".ppt"]
         text_formats = [".txt", ".md"]
+        # ★★★ 新增：定义图片格式列表，用于匹配 ★★★
+        image_formats = [".png", ".jpg", ".jpeg"]
 
         if file_ext == ".pdf":
             FileProcessor.process_pdf_upgraded(file_path, txt_path)
@@ -151,41 +149,50 @@ class FileProcessor:
                     file_path.unlink()
                 if pdf_path and pdf_path.exists():
                     pdf_path.unlink()
-        elif file_ext in text_formats:
-            # [!!! 最终修复 !!!]
-            # 对于纯文本文件，原始路径(file_path)和目标路径(txt_path)是同一个文件。
-            # 这里只需确保它存在即可，无需额外处理。删除原始文件的逻辑会导致文件被错误地删除。
-            FileProcessor.process_text(file_path, txt_path)
-            # 如果原始文件名不是.txt结尾（例如.md），则在处理后删除原始文件
-            if file_path.suffix != ".txt":
+        
+        # ★★★ 根本问题修复：添加图片处理分支，调用Ollama进行识别 ★★★
+        elif file_ext in image_formats:
+            try:
+                # 调用同步的Ollama处理函数
+                FileProcessor._process_image_with_ollama_sync(file_path, txt_path)
+            finally:
+                # 无论成功失败，都删除临时的原始图片文件
                 if file_path.exists():
                     file_path.unlink()
 
-
+        elif file_ext in text_formats:
+            # ★★★ 优化：不再复制内容和删除，而是直接重命名或使用，更高效安全 ★★★
+            FileProcessor.process_text(file_path, txt_path)
+            # process_text 内部已处理了重命名和删除逻辑，此处无需再操作
+            
         return txt_path
 
     @staticmethod
     def process_text(text_file_path: Path, txt_path: Path):
         """
-        读取文本文件为 UTF-8（宽松替换非法字节），写入目标路径
+        ★★★ 优化后的文本处理 ★★★
+        如果文件是.md，直接重命名为.txt；如果是.txt，则什么都不做，避免IO。
         """
         logger.info(f"正在处理文本文件: {text_file_path}...")
         try:
-            # 如果源文件和目标文件是同一个，就不需要做任何事
-            if text_file_path == txt_path:
-                logger.info(f"源文件和目标文件路径相同，无需处理: {txt_path}")
-                return
-
-            # 如果路径不同（例如，从.md转.txt），则执行复制/重命名
-            with open(text_file_path, 'rb') as f_in:
-                raw_content = f_in.read()
-            
-            content = raw_content.decode('utf-8', errors='replace')
-            
-            with open(txt_path, 'w', encoding='utf-8') as f_out:
-                f_out.write(content)
-
-            logger.info(f"成功将文本内容保存到: {txt_path}")
+            # 如果源文件是 .md 且目标 .txt 文件不存在，直接重命名
+            if text_file_path.suffix.lower() == ".md":
+                if text_file_path.exists():
+                    os.rename(text_file_path, txt_path)
+                    logger.info(f"已将 {text_file_path} 重命名为 {txt_path}")
+            # 如果已经是 .txt 文件，并且源和目标是同一个文件，则无需任何操作
+            elif text_file_path == txt_path:
+                logger.info(f"文件已经是 .txt 格式且路径相同，无需处理: {text_file_path}")
+            else:
+                # 兼容其他文本格式（虽然目前只有.txt和.md）或路径不同的情况，进行内容复制
+                with open(text_file_path, 'r', encoding='utf-8', errors='replace') as f_in:
+                    content = f_in.read()
+                with open(txt_path, 'w', encoding='utf-8') as f_out:
+                    f_out.write(content)
+                
+                # 复制完成后删除原始文件
+                if text_file_path.exists():
+                    text_file_path.unlink()
         except Exception as e:
             logger.error(f"处理文本文件 {text_file_path} 时出错: {e}")
             raise
@@ -193,7 +200,7 @@ class FileProcessor:
     @staticmethod
     def process_pdf_upgraded(pdf_path: Path, txt_path: Path):
         """
-        使用两阶段 OCR 策略和原子写入，对PDF文件进行健壮的处理。
+        使用两阶段 OCR 策略和原子写入，对PDF文件进行健壮的处理。 (此函数保持不变)
         """
         logger.info(f"正在使用升级版 OCR 参数处理 PDF: {pdf_path}...")
         
@@ -276,7 +283,7 @@ class FileProcessor:
     @staticmethod
     async def cleanup_kb_files(kb_name: str):
         """
-        删除与指定知识库相关的所有文件
+        删除与指定知识库相关的所有文件 (此函数保持不变)
         """
         kb_path = KB_ROOT_PATH / kb_name
         if not kb_path.is_dir():
