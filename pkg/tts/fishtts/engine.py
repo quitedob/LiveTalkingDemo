@@ -85,10 +85,10 @@ class FishTTS(BaseTTS):
 
     def txt_to_audio(self, msg_tuple):
         """
-        设计说明（流式WAV稳健版，已修复 UnboundLocalError + 10ms淡入淡出 + ≥100ms源批 + 40ms/帧配速）：
+        设计说明（流式WAV稳健版，已修复 UnboundLocalError + 10ms淡入淡出 + ≥120ms源批 + 40ms/帧配速）：
         - 仅改 FishTTS 侧：严格按"RIFF/WAVE 头 + 连续 PCM"解析服务端 streaming 返回，避免把未完结流交给通用解码器。
         - 句首/句尾 10ms 淡入/淡出，消除零交点不连续导致的"啪/电音"。
-        - 源侧≥100ms一批重采样到16k，降低 resampy 调用频率，稳CPU。
+        - 源侧≥120ms一批重采样到16k，降低 resampy 调用频率，稳CPU。
         - 配速改为 40ms/帧（FRAME_SECONDS=0.04），并将"发包长度=40ms=640样本@16k"，节流与声学时长严格一致。
         - 绝不发送空帧：尾包不足时补零到整40ms，并在该包携带 end 事件，避免 basereal 对空 planes 访问报错。
         """
@@ -113,13 +113,13 @@ class FishTTS(BaseTTS):
             pass
 
         # 下游要求的采样率/默认分块；我们把"发包长度"改成40ms（640样本）
-        target_sr = self.sample_rate             # 一般为 16000
-        samples_20ms = self.chunk                # 常为 320 (=20ms@16k)
-        FRAME_SECONDS = 0.02                     # 按你的要求：40ms 节流
+        target_sr = self.sample_rate          # 一般为 16000
+        samples_20ms = self.chunk             # 常为 320 (=20ms@16k)
+        FRAME_SECONDS = 0.02                  # 按你的要求：40ms 节流
         EMIT_SAMPLES = int(target_sr * FRAME_SECONDS)  # 每包 640 样本（40ms@16k）
-        BATCH_MS = 100                           # 源侧≥100ms 批量重采样
-        FADE_MS = 10                             # 句首/句尾 10ms 淡入/淡出
-        LIMIT = 0.98                             # 轻限幅，避免削顶失真
+        BATCH_MS = 120                        # (此处修改) 源侧≥120ms 批量重采样
+        FADE_MS = 10                          # 句首/句尾 10ms 淡入/淡出
+        LIMIT = 0.98                          # 轻限幅，避免削顶失真
 
         # ======================== 配速器（40ms/包） ========================
         def _pacer_init():
@@ -257,12 +257,12 @@ class FishTTS(BaseTTS):
 
         # ======================== 累积/重采样/发包（40ms发包） ========================
         src_buf = np.zeros(0, dtype=np.float32)  # 源采样率下累积缓冲
-        dst_blocks = []                           # 16k 下的块队列
-        dst_idx = 0                               # 供内嵌函数读写，必须 nonlocal
+        dst_blocks = []                          # 16k 下的块队列
+        dst_idx = 0                              # 供内嵌函数读写，必须 nonlocal
         pctx = _pacer_init()
         first_emit = False
 
-        # 源批大小（≥100ms）
+        # 源批大小（≥120ms）
         block_src = max(int((BATCH_MS/1000.0) * fmt["sample_rate"]), 1)
 
         def _emit_frames_from_blocks(final_flush=False):
@@ -345,7 +345,7 @@ class FishTTS(BaseTTS):
                     self.parent.put_audio_frame(silent, {'status': 'end', 'text': text, 'msgevent': textevent})
                     pctx["frames"] += 1
 
-        # ======================== 主循环：收流 → 解析头 → 解码PCM → ≥100ms重采样 → 40ms发包 ========================
+        # ======================== 主循环：收流 → 解析头 → 解码PCM → ≥120ms重采样 → 40ms发包 ========================
         for chunk in resp.iter_content(chunk_size=16384):
             if not chunk or self.state != State.RUNNING:
                 continue
@@ -359,7 +359,7 @@ class FishTTS(BaseTTS):
                 if used > 0 and len(header_buf) > used:
                     data_bytes.extend(header_buf[used:])
                 header_buf.clear()
-                # 解析到头后，更新源侧批大小（≥100ms）
+                # 解析到头后，更新源侧批大小（≥120ms）
                 block_src = max(int((BATCH_MS/1000.0) * fmt["sample_rate"]), 1)
                 continue
 
@@ -375,7 +375,7 @@ class FishTTS(BaseTTS):
                 if f32 is not None and f32.size > 0:
                     src_buf = f32 if src_buf.size == 0 else np.concatenate([src_buf, f32], axis=0)
 
-                # 每累计 ≥100ms 源音频：重采样到16k -> 入队 -> 试发40ms包
+                # 每累计 ≥120ms 源音频：重采样到16k -> 入队 -> 试发40ms包
                 while src_buf.size >= block_src:
                     seg = src_buf[:block_src]
                     src_buf = src_buf[block_src:]
