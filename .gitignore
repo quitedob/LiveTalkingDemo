@@ -6,7 +6,6 @@ build/
 *.png
 tmp*
 trial*/
-*.txt
 *.bin
 rag_data
 data
