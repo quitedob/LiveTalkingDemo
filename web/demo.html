@@ -3,858 +3,1260 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>交互式AI教育系统项目蓝图</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>智能语音助手控制面板</title>
+    <script src="client.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-    
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        
         body {
-            font-family: 'Inter', 'Noto Sans SC', sans-serif;
-            background-color: #f8f7f4;
-            color: #3d3d3d;
-            background: linear-gradient(135deg, #f0f7ff 0%, #f8f7f4 100%);
-        }
-        .active-nav {
-            color: #2563eb;
-            border-bottom: 2px solid #2563eb;
-        }
-        .nav-link {
-            transition: color 0.3s ease, border-color 0.3s ease;
-        }
-        .content-section {
-            display: none;
-            animation: fadeIn 0.5s ease-in;
-        }
-        .content-section.active {
-            display: block;
-        }
-        .diagram-node {
-            transition: all 0.3s ease;
-            cursor: pointer;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        }
-        .diagram-node:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-        }
-        .diagram-connector {
-            position: absolute;
-            background-color: #9ca3af;
-            z-index: -1;
-            transition: background-color 0.3s ease;
-        }
-        .timeline-item::before {
-            content: '';
-            position: absolute;
-            left: -2.375rem;
-            top: 0.25rem;
-            width: 1.25rem;
-            height: 1.25rem;
-            background-color: #d1d5db;
-            border-radius: 9999px;
-            border: 4px solid #f8f7f4;
-            transition: all 0.3s ease;
-        }
-        .timeline-item.active::before {
-            background-color: #2563eb;
-        }
-        .chart-container {
-            position: relative;
-            width: 100%;
-            max-width: 400px;
-            margin-left: auto;
-            margin-right: auto;
-            height: 300px;
-            max-height: 400px;
-        }
-        @media (min-width: 768px) {
-            .chart-container {
-                height: 350px;
-            }
-        }
-        .architecture-card {
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        .architecture-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
-        }
-        .table-row {
-            transition: background-color 0.2s ease;
-        }
-        .table-row:hover {
-            background-color: #f9fafb;
-        }
-        .accordion-content {
-            max-height: 0;
+            background-color: #000;
+            color: #fff;
+            height: 100vh;
             overflow: hidden;
-            transition: max-height 0.3s ease;
+            position: relative;
         }
-        .accordion-content.active {
-            max-height: 1000px;
+
+        #screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #0f0f0f 0%, #000 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1;
         }
-        .feature-badge {
+        
+        .status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #4caf50;
+        }
+        
+        .welcome-text {
+            font-size: 2.5rem;
+            font-weight: 300;
+            text-align: center;
+            margin-bottom: 2rem;
+            max-width: 80%;
+            color: rgba(255, 255, 255, 0.9);
+            line-height: 1.4;
+        }
+        
+        .welcome-text span {
+            color: #4caf50;
+            font-weight: 600;
+        }
+        
+        #toolbar-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 80px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            z-index: 10;
+            transition: all 0.3s ease;
+            opacity: 0;
+            transform: translateY(100%);
+        }
+        
+        body:hover #toolbar-container {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        #toolbar {
+            background: rgba(30, 30, 30, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px 20px 0 0;
+            height: 70px;
+            width: 80%;
+            max-width: 600px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 0 20px;
+            box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .tool-btn {
+            background: rgba(50, 50, 50, 0.7);
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: #fff;
+            font-size: 20px;
+        }
+        
+        .tool-btn:hover {
+            background: rgba(76, 175, 80, 0.8);
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
+        }
+        
+        .tool-btn.active {
+            background: #4caf50;
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
+        }
+
+        #settings-panel {
+            position: absolute;
+            top: 0;
+            right: -400px;
+            width: 380px;
+            height: 100%;
+            background: rgba(25, 25, 25, 0.95);
+            backdrop-filter: blur(10px);
+            border-left: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 100;
+            transition: right 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: -5px 0 25px rgba(0, 0, 0, 0.5);
+        }
+        
+        #settings-panel.active {
+            right: 0;
+        }
+        
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .panel-header h2 {
+            font-weight: 400;
+            font-size: 1.8rem;
+            color: #4caf50;
+        }
+        
+        .close-btn {
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 24px;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+        
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+        
+        .settings-section {
+            margin-bottom: 30px;
+            background: rgba(40, 40, 40, 0.6);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .section-header h3 {
+            font-weight: 500;
+            font-size: 1.3rem;
+            color: #fff;
+        }
+        
+        .section-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .action-btn {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+            color: #4caf50;
+            border-radius: 5px;
+            padding: 6px 12px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .action-btn:hover {
+            background: rgba(76, 175, 80, 0.3);
+        }
+        
+        .settings-content {
+            padding: 10px 0;
+        }
+        
+        .settings-item {
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .settings-item:last-child {
+            border-bottom: none;
+        }
+        
+        .settings-item label {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 1rem;
+        }
+        
+        select, textarea {
+            background: rgba(30, 30, 30, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #fff;
+            width: 100%;
+            margin-top: 5px;
+        }
+        
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        
+        .side-text {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.2rem;
+            font-style: italic;
+            max-width: 300px;
+            line-height: 1.6;
+            transition: all 0.5s ease;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 5;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        #left-text {
+            left: 5%;
+            text-align: left;
+            color: #4caf50; /* AI回复 - 绿色 */
+        }
+        
+        #right-text {
+            right: 5%;
+            text-align: right;
+            color: #ffc107; /* 用户输入 - 黄色 */
+        }
+        
+        .side-text.visible {
+            opacity: 1;
+        }
+        
+        .mic-animation {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: rgba(76, 175, 80, 0.1);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2;
             animation: pulse 2s infinite;
         }
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+        
+        .mic-animation.active {
+            display: flex;
         }
+        
+        .mic-animation i {
+            font-size: 60px;
+            color: rgba(76, 175, 80, 0.8);
+        }
+        
         @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+            0% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
+            }
+            70% {
+                box-shadow: 0 0 0 30px rgba(76, 175, 80, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+            }
+        }
+        
+        .notification {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(30, 30, 30, 0.9);
+            border: 1px solid rgba(76, 175, 80, 0.5);
+            border-radius: 8px;
+            padding: 12px 25px;
+            color: #fff;
+            font-size: 0.9rem;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 200;
+        }
+        
+        .notification.show {
+            opacity: 1;
+        }
+        
+        /* WebRTC 连接状态样式 */
+        .connection-status {
+            position: absolute;
+            top: 60px;
+            left: 20px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            background: rgba(30, 30, 30, 0.8);
+            padding: 8px 12px;
+            border-radius: 5px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        /* 隐藏元素 */
+        .hidden {
+            display: none !important;
         }
     </style>
 </head>
-<body class="antialiased">
+<body>
+    <!-- WebRTC 隐藏元素 -->
+    <input id="use-stun" type="checkbox" style="display: none;" checked>
+    <input type="hidden" id="sessionid">
+    <audio id="audio" autoplay></audio>
+    <video id="video" autoplay playsinline style="display: none;"></video>
 
-    <div class="min-h-screen w-full">
-        <!-- Header -->
-        <header class="bg-white/80 backdrop-blur-lg sticky top-0 z-30 shadow-sm">
-            <div class="container mx-auto px-4">
-                <div class="flex items-center justify-between h-16">
-                    <div class="flex items-center">
-                        <div class="bg-blue-600 p-2 rounded-lg mr-3">
-                            <i class="fas fa-brain text-white text-xl"></i>
-                        </div>
-                        <h1 class="text-xl md:text-2xl font-bold text-gray-800">AI教育交互系统 · 项目蓝图</h1>
-                    </div>
-                    <nav class="hidden md:flex items-center space-x-8 text-gray-600">
-                        <a href="#overview" class="nav-link text-base font-medium pb-1">总览</a>
-                        <a href="#tech-stack" class="nav-link text-base font-medium pb-1">技术栈</a>
-                        <a href="#implementation" class="nav-link text-base font-medium pb-1">核心实现</a>
-                        <a href="#roadmap" class="nav-link text-base font-medium pb-1">开发蓝图</a>
-                    </nav>
-                    <div class="md:hidden">
-                        <select id="mobile-nav" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                            <option value="overview">总览</option>
-                            <option value="tech-stack">技术栈</option>
-                            <option value="implementation">核心实现</option>
-                            <option value="roadmap">开发蓝图</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </header>
-
-        <!-- Main Content -->
-        <main class="container mx-auto px-4 py-8 md:py-12">
-            
-            <!-- Section: Overview -->
-            <section id="overview" class="content-section">
-                <div class="text-center mb-12">
-                    <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-2">项目愿景与战略目标</h2>
-                    <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-600">构建一个先进、多模态、由AI驱动的教育互动平台，核心是简化开发、拥抱异步、解耦服务，为单人开发者在长周期内成功交付项目奠定坚实基础。</p>
-                </div>
-
-                <div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 md:p-8 rounded-xl shadow-md mb-12">
-                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">高层系统架构</h3>
-                    <p class="text-center text-gray-500 mb-8">下图展示了系统各组件间的交互关系。鼠标悬停在节点上可查看简介。</p>
-                    <div id="architecture-diagram" class="relative w-full min-h-[500px] md:min-h-[600px] flex flex-col items-center justify-center space-y-12 md:space-y-0">
-                        <!-- Tiers -->
-                        <div class="w-full flex flex-col md:flex-row justify-around items-center space-y-8 md:space-y-0">
-                            <div class="diagram-node bg-blue-100 text-blue-800 p-4 rounded-lg shadow-sm w-48 text-center" data-info="用户端 (Clients): 用户与系统交互的界面，包括Vue Web应用和微信小程序。">
-                                <i class="fas fa-laptop text-xl mb-2"></i>
-                                <h4 class="font-bold">用户端</h4>
-                                <p class="text-sm mt-1">Web应用 & 小程序</p>
-                            </div>
-                            <div class="diagram-node bg-indigo-100 text-indigo-800 p-4 rounded-lg shadow-sm w-48 text-center" data-info="后端服务 (Backend): 基于Spring Boot的模块化单体应用，处理所有业务逻辑。">
-                                <i class="fas fa-server text-xl mb-2"></i>
-                                <h4 class="font-bold">后端服务</h4>
-                                <p class="text-sm mt-1">Spring Boot应用</p>
-                            </div>
-                            <div class="diagram-node bg-purple-100 text-purple-800 p-4 rounded-lg shadow-sm w-48 text-center" data-info="外部服务 (External): 提供核心AI能力的第三方平台，如阿里云和字节跳动。">
-                                <i class="fas fa-cloud text-xl mb-2"></i>
-                                <h4 class="font-bold">外部服务</h4>
-                                <p class="text-sm mt-1">AI模型平台</p>
-                            </div>
-                        </div>
-                        
-                        <!-- Connectors -->
-                        <div class="absolute top-1/3 w-2/3 h-1 bg-gray-300 rounded-full hidden md:block"></div>
-                        <div class="absolute top-1/3 w-2/3 h-1 bg-gray-300 rounded-full hidden md:block transform rotate-180"></div>
-                        
-                        <div class="w-full flex justify-center mt-12">
-                            <div class="diagram-node bg-green-100 text-green-800 p-4 rounded-lg shadow-sm w-48 text-center" data-info="数据存储 (Persistence): 使用MySQL和阿里云OSS进行数据和文件的持久化存储。">
-                                <i class="fas fa-database text-xl mb-2"></i>
-                                <h4 class="font-bold">数据存储</h4>
-                                <p class="text-sm mt-1">MySQL & OSS</p>
-                            </div>
-                        </div>
-
-                        <!-- Info Box -->
-                        <div id="diagram-info" class="absolute bottom-0 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-sm rounded-lg px-4 py-2 opacity-0 transition-opacity duration-300"></div>
-                    </div>
-                </div>
-
-                <!-- Core Architecture Decisions -->
-                <div class="mb-12">
-                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">核心架构决策</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="architecture-card bg-white p-6 rounded-xl shadow-md">
-                            <div class="flex items-start mb-4">
-                                <div class="bg-blue-100 p-3 rounded-full mr-4">
-                                    <i class="fas fa-cubes text-blue-600 text-xl"></i>
-                                </div>
-                                <div>
-                                    <h4 class="font-bold text-lg text-gray-800 mb-1">模块化单体架构</h4>
-                                    <p class="text-gray-600">为单人开发者优化，保持单一部署单元的简便性，同时通过模块边界实现高内聚低耦合</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="architecture-card bg-white p-6 rounded-xl shadow-md">
-                            <div class="flex items-start mb-4">
-                                <div class="bg-indigo-100 p-3 rounded-full mr-4">
-                                    <i class="fas fa-sync-alt text-indigo-600 text-xl"></i>
-                                </div>
-                                <div>
-                                    <h4 class="font-bold text-lg text-gray-800 mb-1">默认异步处理</h4>
-                                    <p class="text-gray-600">应对AI媒体生成的现实需求，构建强大的异步任务管理机制贯穿所有媒体生成流程</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="architecture-card bg-white p-6 rounded-xl shadow-md">
-                            <div class="flex items-start mb-4">
-                                <div class="bg-purple-100 p-3 rounded-full mr-4">
-                                    <i class="fas fa-network-wired text-purple-600 text-xl"></i>
-                                </div>
-                                <div>
-                                    <h4 class="font-bold text-lg text-gray-800 mb-1">AI服务网关</h4>
-                                    <p class="text-gray-600">解耦业务逻辑与底层模型实现，为项目长期演进和维护奠定坚实基础</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="architecture-card bg-white p-6 rounded-xl shadow-md">
-                            <div class="flex items-start mb-4">
-                                <div class="bg-green-100 p-3 rounded-full mr-4">
-                                    <i class="fas fa-shield-alt text-green-600 text-xl"></i>
-                                </div>
-                                <div>
-                                    <h4 class="font-bold text-lg text-gray-800 mb-1">安全HTML处理</h4>
-                                    <p class="text-gray-600">后端严格净化AI生成的HTML，使用OWASP库定义安全白名单策略，防范XSS攻击</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Section: Tech Stack -->
-            <section id="tech-stack" class="content-section">
-                <div class="text-center mb-12">
-                    <h2 class="text-3xl md:text-4xl font-bold text-gray-900">技术选型</h2>
-                    <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-600">为确保单人开发的可行性与项目的长期维护性，我们选择了以下成熟且高效的技术栈。</p>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
-                    <!-- Frontend -->
-                    <div class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow">
-                        <div class="flex items-center mb-4">
-                            <div class="bg-sky-100 p-2 rounded-lg mr-3">
-                                <i class="fas fa-desktop text-sky-600 text-xl"></i>
-                            </div>
-                            <h3 class="text-xl font-bold text-gray-800">前端</h3>
-                        </div>
-                        <div class="mb-4">
-                            <span class="inline-block bg-sky-100 text-sky-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">Vue 3</span>
-                            <span class="inline-block bg-sky-100 text-sky-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">Pinia</span>
-                            <span class="inline-block bg-sky-100 text-sky-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">uni-app</span>
-                        </div>
-                        <p class="text-gray-600">采用Vue 3构建响应式Web界面，Pinia进行状态管理，并计划使用uni-app实现跨端到微信小程序，最大化代码复用。</p>
-                    </div>
-                    <!-- Backend -->
-                    <div class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow">
-                        <div class="flex items-center mb-4">
-                            <div class="bg-emerald-100 p-2 rounded-lg mr-3">
-                                <i class="fas fa-server text-emerald-600 text-xl"></i>
-                            </div>
-                            <h3 class="text-xl font-bold text-gray-800">后端</h3>
-                        </div>
-                        <div class="mb-4">
-                            <span class="inline-block bg-emerald-100 text-emerald-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">Spring Boot 3</span>
-                            <span class="inline-block bg-emerald-100 text-emerald-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">JWT</span>
-                        </div>
-                        <p class="text-gray-600">基于Spring Boot 3构建模块化单体应用，使用Spring Security和JWT保障API安全，兼顾开发效率与系统健壮性。</p>
-                    </div>
-                    <!-- Database -->
-                    <div class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow">
-                        <div class="flex items-center mb-4">
-                            <div class="bg-amber-100 p-2 rounded-lg mr-3">
-                                <i class="fas fa-database text-amber-600 text-xl"></i>
-                            </div>
-                            <h3 class="text-xl font-bold text-gray-800">数据存储</h3>
-                        </div>
-                        <div class="mb-4">
-                            <span class="inline-block bg-amber-100 text-amber-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">MySQL</span>
-                            <span class="inline-block bg-amber-100 text-amber-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">OSS</span>
-                        </div>
-                        <p class="text-gray-600">使用MySQL存储结构化数据（用户信息、聊天记录等），并结合阿里云OSS持久化存储所有AI生成的媒体文件。</p>
-                    </div>
-                    <!-- AI Providers -->
-                    <div class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow">
-                        <div class="flex items-center mb-4">
-                            <div class="bg-rose-100 p-2 rounded-lg mr-3">
-                                <i class="fas fa-robot text-rose-600 text-xl"></i>
-                            </div>
-                            <h3 class="text-xl font-bold text-gray-800">AI服务商</h3>
-                        </div>
-                        <div class="mb-4">
-                            <span class="inline-block bg-rose-100 text-rose-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">阿里云通义</span>
-                            <span class="inline-block bg-rose-100 text-rose-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full">字节跳动豆包</span>
-                        </div>
-                        <p class="text-gray-600">集成国内顶尖AI平台，通过统一的AI服务网关调用通义和豆包模型，实现多模态内容生成。</p>
-                    </div>
-                </div>
-
-                <!-- Backend Modules -->
-                <div class="bg-white p-6 md:p-8 rounded-xl shadow-md">
-                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">后端模块化结构</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-core</h4>
-                            <p class="text-sm text-gray-600">核心领域模型、工具类、常量定义</p>
-                        </div>
-                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-web</h4>
-                            <p class="text-sm text-gray-600">控制器、DTO、异常处理</p>
-                        </div>
-                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-security</h4>
-                            <p class="text-sm text-gray-600">Spring Security配置、JWT认证</p>
-                        </div>
-                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-user</h4>
-                            <p class="text-sm text-gray-600">用户注册、登录、信息管理</p>
-                        </div>
-                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-chat</h4>
-                            <p class="text-sm text-gray-600">聊天会话管理、消息存储</p>
-                        </div>
-                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-ai-gateway</h4>
-                            <p class="text-sm text-gray-600">AI服务网关、模型交互</p>
-                        </div>
-                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-media</h4>
-                            <p class="text-sm text-gray-600">异步任务管理、OSS集成</p>
-                        </div>
-                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                            <h4 class="font-bold text-blue-800 mb-2">ai-edu-content</h4>
-                            <p class="text-sm text-gray-600">教育视频系统管理</p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Section: Core Implementation -->
-            <section id="implementation" class="content-section">
-                <div class="text-center mb-12">
-                    <h2 class="text-3xl md:text-4xl font-bold text-gray-900">核心实现方案</h2>
-                    <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-600">深入了解系统关键模块的设计，包括数据模型、AI服务选型和异步任务流程。</p>
-                </div>
-
-                <!-- Database Schema -->
-                <div class="bg-white p-6 md:p-8 rounded-xl shadow-md mb-8">
-                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">数据库实体关系 (ERD)</h3>
-                    <p class="text-center text-gray-500 mb-8">展示了核心业务表的结构与关联。点击表实体可查看其设计详情。</p>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
-                        <div class="space-y-4">
-                            <div class="erd-node diagram-node bg-gray-200 p-3 rounded-lg" data-info="users: 存储用户信息、角色和认证凭据。">
-                                <i class="fas fa-users mr-2"></i>users
-                            </div>
-                            <div class="erd-node diagram-node bg-gray-200 p-3 rounded-lg" data-info="chat_sessions: 记录用户的每一次对话会话。">
-                                <i class="fas fa-comments mr-2"></i>chat_sessions
-                            </div>
-                            <div class="erd-node diagram-node bg-gray-200 p-3 rounded-lg" data-info="chat_messages: 存储会话中的每一条消息，包括发送者、内容和类型。">
-                                <i class="fas fa-comment-dots mr-2"></i>chat_messages
-                            </div>
-                        </div>
-                        <div class="space-y-4">
-                            <div class="erd-node diagram-node bg-blue-200 p-3 rounded-lg font-semibold" data-info="async_tasks: 核心表！追踪所有耗时AI任务（如图像、视频生成）的状态，是实现异步处理的基石。">
-                                <i class="fas fa-tasks mr-2"></i>async_tasks
-                            </div>
-                            <div class="erd-node diagram-node bg-blue-200 p-3 rounded-lg font-semibold" data-info="media_assets: 统一管理所有媒体资源，记录其在OSS上的永久存储路径和元数据。">
-                                <i class="fas fa-file-image mr-2"></i>media_assets
-                            </div>
-                        </div>
-                        <div class="space-y-4">
-                            <div class="erd-node diagram-node bg-green-200 p-3 rounded-lg" data-info="edu_videos: 存储教育视频模块的内容信息，关联到媒体资源表。">
-                                <i class="fas fa-video mr-2"></i>edu_videos
-                            </div>
-                        </div>
-                    </div>
-                    <div id="erd-info" class="mt-8 p-4 bg-gray-50 rounded-lg text-center text-gray-700 min-h-[50px] flex items-center justify-center">
-                        点击上方表实体查看详情
-                    </div>
-                </div>
-
-                <!-- AI Services -->
-                <div class="bg-white p-6 md:p-8 rounded-xl shadow-md mb-8">
-                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">AI服务选型策略</h3>
-                     <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left text-gray-500">
-                            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
-                                <tr>
-                                    <th scope="col" class="px-6 py-3">能力模态</th>
-                                    <th scope="col" class="px-6 py-3">首选方案</th>
-                                    <th scope="col" class="px-6 py-3">价格</th>
-                                    <th scope="col" class="px-6 py-3">选型理由</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr class="bg-white border-b table-row">
-                                    <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">文本生成</th>
-                                    <td class="px-6 py-4">阿里云通义 qwen3</td>
-                                    <td class="px-6 py-4">云服务稳定</td>
-                                    <td class="px-6 py-4">国内开源模型标杆</td>
-                                </tr>
-                                <tr class="bg-white border-b table-row">
-                                    <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">图像生成</th>
-                                    <td class="px-6 py-4">阿里云通义万相 (wanx-v2)</td>
-                                    <td class="px-6 py-4">按张计费</td>
-                                    <td class="px-6 py-4">API成熟，支持异步任务，提供丰富的风格选项</td>
-                                </tr>
-                                <tr class="bg-white border-b table-row">
-                                    <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">音频生成 (TTS)</th>
-                                    <td class="px-6 py-4">阿里云通义音乐模型 CosyVoice</td>
-                                    <td class="px-6 py-4">速度快质量高</td>
-                                    <td class="px-6 py-4">支持流式输出，音色自然，适合实时对话场景</td>
-                                </tr>
-                                <tr class="bg-white border-b table-row">
-                                    <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">视频生成</th>
-                                    <td class="px-6 py-4">阿里云通义万相 (wan2.2-i2v-plus)</td>
-                                    <td class="px-6 py-4">按秒计费</td>
-                                    <td class="px-6 py-4">图生视频，API可用，异步任务，生成时长5秒</td>
-                                </tr>
-                                <tr class="bg-white table-row">
-                                    <th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">视觉理解</th>
-                                    <td class="px-6 py-4">字节跳动豆包视觉模型</td>
-                                    <td class="px-6 py-4">¥0.003/千tokens</td>
-                                    <td class="px-6 py-4">价格低于行业平均85%，适合多模态对话场景</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- AI Service Gateway -->
-                <div class="bg-white p-6 md:p-8 rounded-xl shadow-md">
-                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">AI服务网关接口定义</h3>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left text-gray-500">
-                            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
-                                <tr>
-                                    <th scope="col" class="px-6 py-3">方法</th>
-                                    <th scope="col" class="px-6 py-3">接口</th>
-                                    <th scope="col" class="px-6 py-3">描述</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr class="bg-white border-b table-row">
-                                    <td class="px-6 py-4 font-mono">Flux&lt;String&gt;</td>
-                                    <td class="px-6 py-4">generateTextStream(String prompt)</td>
-                                    <td class="px-6 py-4">流式文本生成</td>
-                                </tr>
-                                <tr class="bg-white border-b table-row">
-                                    <td class="px-6 py-4 font-mono">String</td>
-                                    <td class="px-6 py-4">generateImageAsync(String prompt)</td>
-                                    <td class="px-6 py-4">异步图像生成，返回内部任务ID</td>
-                                </tr>
-                                <tr class="bg-white border-b table-row">
-                                    <td class="px-6 py-4 font-mono">String</td>
-                                    <td class="px-6 py-4">generateVideoAsync(Long imageAssetId, String prompt)</td>
-                                    <td class="px-6 py-4">异步视频生成，返回内部任务ID</td>
-                                </tr>
-                                <tr class="bg-white border-b table-row">
-                                    <td class="px-6 py-4 font-mono">Flux&lt;ByteBuffer&gt;</td>
-                                    <td class="px-6 py-4">generateAudioStream(String text)</td>
-                                    <td class="px-6 py-4">流式音频生成</td>
-                                </tr>
-                                <tr class="bg-white table-row">
-                                    <td class="px-6 py-4 font-mono">TaskStatus</td>
-                                    <td class="px-6 py-4">getAsyncTaskStatus(String internalTaskId)</td>
-                                    <td class="px-6 py-4">查询异步任务状态</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Section: Roadmap -->
-            <section id="roadmap" class="content-section">
-                <div class="text-center mb-12">
-                    <h2 class="text-3xl md:text-4xl font-bold text-gray-900">18个月开发蓝图</h2>
-                    <p class="mt-4 max-w-3xl mx-auto text-lg text-gray-600">项目将分五个阶段进行，通过增量交付控制风险，确保独立开发者能够成功完成目标。</p>
-                </div>
-
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div class="lg:col-span-2 bg-white p-6 md:p-8 rounded-xl shadow-md">
-                        <h3 class="text-2xl font-bold text-gray-800 mb-8">阶段性目标</h3>
-                        <div id="timeline-container" class="relative border-l-2 border-gray-200 ml-10">
-                            <!-- Timeline items will be injected by JS -->
-                        </div>
-                    </div>
-                    <div class="bg-white p-6 md:p-8 rounded-xl shadow-md flex flex-col justify-center">
-                        <h3 class="text-2xl font-bold text-center text-gray-800 mb-4">各阶段时间占比</h3>
-                        <div class="chart-container">
-                            <canvas id="roadmap-chart"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Feature Timeline -->
-                <div class="mt-12 bg-white p-6 md:p-8 rounded-xl shadow-md">
-                    <h3 class="text-2xl font-bold text-center text-gray-800 mb-8">功能演进路线</h3>
-                    <div class="relative">
-                        <!-- Timeline -->
-                        <div class="border-l-4 border-blue-200 ml-4 pl-8 pb-8">
-                            <!-- Phase 1 -->
-                            <div class="mb-10 relative">
-                                <div class="absolute -left-8 top-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
-                                    <span class="text-white font-bold">1</span>
-                                </div>
-                                <div class="bg-blue-50 p-4 rounded-lg">
-                                    <h4 class="font-bold text-lg text-gray-800 mb-2">阶段一: 核心平台与文本对话</h4>
-                                    <p class="text-gray-600 mb-3">1-4个月</p>
-                                    <ul class="list-disc pl-5 text-gray-600 space-y-1">
-                                        <li>项目初始化与Git仓库配置</li>
-                                        <li>Spring Boot多模块项目搭建</li>
-                                        <li>JWT安全认证实现</li>
-                                        <li>流式文本生成接口开发</li>
-                                        <li>基础聊天UI构建</li>
-                                    </ul>
-                                </div>
-                            </div>
-                            
-                            <!-- Phase 2 -->
-                            <div class="mb-10 relative">
-                                <div class="absolute -left-8 top-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                                    <span class="text-white font-bold">2</span>
-                                </div>
-                                <div class="bg-green-50 p-4 rounded-lg">
-                                    <h4 class="font-bold text-lg text-gray-800 mb-2">阶段二: 图像与音频生成</h4>
-                                    <p class="text-gray-600 mb-3">5-8个月</p>
-                                    <ul class="list-disc pl-5 text-gray-600 space-y-1">
-                                        <li>async_tasks和media_assets表设计</li>
-                                        <li>阿里云OSS集成</li>
-                                        <li>文生图API对接</li>
-                                        <li>TTS流式音频生成</li>
-                                        <li>图片网格组件开发</li>
-                                    </ul>
-                                </div>
-                            </div>
-                            
-                            <!-- Phase 3 -->
-                            <div class="mb-10 relative">
-                                <div class="absolute -left-8 top-1 w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
-                                    <span class="text-white font-bold">3</span>
-                                </div>
-                                <div class="bg-yellow-50 p-4 rounded-lg">
-                                    <h4 class="font-bold text-lg text-gray-800 mb-2">阶段三: 视频生成与HTML渲染</h4>
-                                    <p class="text-gray-600 mb-3">9-12个月</p>
-                                    <ul class="list-disc pl-5 text-gray-600 space-y-1">
-                                        <li>图生视频API对接</li>
-                                        <li>OWASP HTML净化管道</li>
-                                        <li>视频播放组件开发</li>
-                                        <li>安全HTML渲染实现</li>
-                                        <li>四模态生成能力整合</li>
-                                    </ul>
-                                </div>
-                            </div>
-                            
-                            <!-- Phase 4 -->
-                            <div class="mb-10 relative">
-                                <div class="absolute -left-8 top-1 w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
-                                    <span class="text-white font-bold">4</span>
-                                </div>
-                                <div class="bg-orange-50 p-4 rounded-lg">
-                                    <h4 class="font-bold text-lg text-gray-800 mb-2">阶段四: 教育系统与体验优化</h4>
-                                    <p class="text-gray-600 mb-3">13-15个月</p>
-                                    <ul class="list-disc pl-5 text-gray-600 space-y-1">
-                                        <li>教育视频CRUD API开发</li>
-                                        <li>视频浏览页面构建</li>
-                                        <li>内容选择提交功能</li>
-                                        <li>UI/UX优化</li>
-                                        <li>小范围用户测试准备</li>
-                                    </ul>
-                                </div>
-                            </div>
-                            
-                            <!-- Phase 5 -->
-                            <div class="relative">
-                                <div class="absolute -left-8 top-1 w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
-                                    <span class="text-white font-bold">5</span>
-                                </div>
-                                <div class="bg-purple-50 p-4 rounded-lg">
-                                    <h4 class="font-bold text-lg text-gray-800 mb-2">阶段五: 微信小程序与公开发布</h4>
-                                    <p class="text-gray-600 mb-3">16-18个月</p>
-                                    <ul class="list-disc pl-5 text-gray-600 space-y-1">
-                                        <li>uni-app跨端项目搭建</li>
-                                        <li>Vue组件迁移适配</li>
-                                        <li>微信登录集成</li>
-                                        <li>全面功能测试</li>
-                                        <li>生产环境部署上线</li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-        </main>
+    <div id="screen">
+        <div class="status">
+            <div class="status-dot" id="status-dot"></div>
+            <span id="status-text">语音助手已就绪</span>
+        </div>
         
-        <!-- Footer -->
-        <footer class="bg-gray-800 text-white py-8 mt-12">
-            <div class="container mx-auto px-4">
-                <div class="flex flex-col md:flex-row justify-between items-center">
-                    <div class="mb-4 md:mb-0">
-                        <h3 class="text-xl font-bold">AI教育交互系统</h3>
-                        <p class="text-gray-400 mt-2">构建未来教育体验</p>
-                    </div>
-                    <div class="flex space-x-6">
-                        <a href="#" class="text-gray-300 hover:text-white transition">
-                            <i class="fab fa-github text-xl"></i>
-                        </a>
-                        <a href="#" class="text-gray-300 hover:text-white transition">
-                            <i class="fab fa-weixin text-xl"></i>
-                        </a>
-                        <a href="#" class="text-gray-300 hover:text-white transition">
-                            <i class="fab fa-linkedin text-xl"></i>
-                        </a>
-                    </div>
+        <div class="connection-status" id="connection-status">
+            WebRTC状态: 未连接
+        </div>
+        
+        <div class="welcome-text">
+            欢迎使用<span>智能语音助手</span><br>请点击下方工具栏开始交互
+        </div>
+        
+        <div class="mic-animation" id="mic-animation">
+            <i class="fas fa-microphone"></i>
+        </div>
+        
+        <div class="side-text" id="left-text">
+            <div id="ai-subtitle">AI回复将在这里显示...</div>
+        </div>
+        
+        <div class="side-text" id="right-text">
+            <div id="user-subtitle">用户语音识别结果将在这里显示...</div>
+        </div>
+    </div>
+    
+    <div id="toolbar-container">
+        <div id="toolbar">
+            <button class="tool-btn" id="mic-btn">
+                <i class="fas fa-microphone"></i>
+            </button>
+            <button class="tool-btn" id="start-btn">
+                <i class="fas fa-play"></i>
+            </button>
+            <button class="tool-btn" id="settings-btn">
+                <i class="fas fa-cog"></i>
+            </button>
+            <button class="tool-btn" id="text-btn">
+                <i class="fas fa-font"></i>
+            </button>
+            <button class="tool-btn" id="book-btn">
+                <i class="fas fa-book"></i>
+            </button>
+        </div>
+    </div>
+    
+    <div id="settings-panel">
+        <div class="panel-header">
+            <h2>系统设置</h2>
+            <button class="close-btn" id="close-panel">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div class="settings-section">
+            <div class="section-header">
+                <h3>RAG知识库设置</h3>
+                <div class="section-actions">
+                    <button class="action-btn" id="create-kb-btn">创建</button>
+                    <button class="action-btn" id="delete-kb-btn">删除</button>
+                    <button class="action-btn" id="switch-kb-btn">切换</button>
+            </div>
                 </div>
-                <div class="border-t border-gray-700 mt-8 pt-6 text-center text-gray-400">
-                    <p>© 2025 AI教育交互系统项目蓝图 - 所有权利保留</p>
+            <div class="settings-content">
+                <div class="settings-item">
+                    <label for="kb-select">当前知识库</label>
+                    <select id="kb-select" style="width: 100%; margin-top: 5px;">
+                    <option value="">无</option>
+                </select>
+                </div>
+                <div class="settings-item">
+                    <label for="kb-name">新建知识库名称</label>
+                    <input type="text" id="kb-name" placeholder="3-20位英文/数字" style="width: 100%; margin-top: 5px;">
+                </div>
+                <div class="settings-item">
+                    <label for="kb-file">上传文件</label>
+                    <input type="file" id="kb-file" style="width: 100%; margin-top: 5px;">
+                </div>
+                <div class="settings-item">
+                    <label for="rag-prompt">RAG提示词</label>
+                </div>
+                <textarea id="rag-prompt" placeholder="请输入RAG提示词...">基于提供的上下文信息，准确、简洁地回答用户问题。如果信息不足，请说明无法回答。</textarea>
+                <div class="settings-item">
+                    <label>WebRTC连接状态</label>
+                    <div id="webrtc-status" style="color: #f44336;">未连接</div>
                 </div>
             </div>
-        </footer>
+        </div>
+        
+        <div class="settings-section">
+            <div class="section-header">
+                <h3>声音克隆设置</h3>
+                <div class="section-actions">
+                    <button class="action-btn">增加</button>
+                    <button class="action-btn">删除</button>
+                    <button class="action-btn">选择</button>
+                </div>
+            </div>
+            <div class="settings-content">
+                <div class="settings-item">
+                    <label for="voice-select">选择克隆声音</label>
+                </div>
+                <select id="voice-select">
+                    <option>专业男声 (默认)</option>
+                    <option>温和女声</option>
+                    <option>磁性男声</option>
+                    <option>活力女声</option>
+                    <option>自定义声音1</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="settings-section">
+            <div class="section-header">
+                <h3>数字人选择</h3>
+                <div class="section-actions">
+                    <button class="action-btn">增加</button>
+                    <button class="action-btn">删除</button>
+                    <button class="action-btn">选择</button>
+                </div>
+            </div>
+            <div class="settings-content">
+                <div class="settings-item">
+                    <label for="avatar-select">选择数字人形象</label>
+                </div>
+                <select id="avatar-select">
+                    <option>商务男性 (默认)</option>
+                    <option>职业女性</option>
+                    <option>科技感形象</option>
+                    <option>卡通形象</option>
+                    <option>自定义形象1</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="settings-section">
+            <div class="section-header">
+                <h3>使用说明</h3>
+            </div>
+            <div class="settings-content">
+                <div style="color: rgba(255, 255, 255, 0.8); font-size: 14px; line-height: 1.6;">
+                    <p><strong>操作步骤：</strong></p>
+                    <p>1. 点击播放按钮建立WebRTC连接</p>
+                    <p>2. 点击麦克风按钮开始语音交互</p>
+                    <p>3. 点击文本按钮进行文字输入</p>
+                    <p><strong>快捷键：</strong></p>
+                    <p>• 空格键：开始录音</p>
+                    <p>• ESC键：停止录音</p>
+                    <p><strong>字幕说明：</strong></p>
+                    <p>• 左侧绿色：AI回复内容</p>
+                    <p>• 右侧黄色：用户输入内容</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="notification" id="notification">操作成功！</div>
+    
+    <!-- ASR结果显示区域 -->
+    <div id="asr-result" style="position: absolute; bottom: 100px; right: 20px; background: rgba(255, 193, 7, 0.1); border: 1px solid #ffc107; border-radius: 8px; padding: 10px; color: #ffc107; max-width: 300px; opacity: 0; transition: opacity 0.3s ease; z-index: 50;">
+        <div style="font-size: 12px; margin-bottom: 5px;">语音识别结果:</div>
+        <div id="asr-text"></div>
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const sections = document.querySelectorAll('.content-section');
-            const navLinks = document.querySelectorAll('.nav-link');
-            const mobileNav = document.getElementById('mobile-nav');
-
-            function setActiveSection(hash) {
-                const targetHash = hash || '#overview';
-                
-                sections.forEach(section => {
-                    if ('#' + section.id === targetHash) {
-                        section.classList.add('active');
-                    } else {
-                        section.classList.remove('active');
-                    }
-                });
-
-                navLinks.forEach(link => {
-                    if (link.getAttribute('href') === targetHash) {
-                        link.classList.add('active-nav');
-                    } else {
-                        link.classList.remove('active-nav');
-                    }
-                });
-                
-                if (mobileNav.value !== targetHash.substring(1)) {
-                    mobileNav.value = targetHash.substring(1);
-                }
-            }
-
-            navLinks.forEach(link => {
-                link.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const targetHash = this.getAttribute('href');
-                    setActiveSection(targetHash);
-                    window.location.hash = targetHash;
-                });
-            });
+        // 获取DOM元素
+        const settingsBtn = document.getElementById('settings-btn');
+        const closePanelBtn = document.getElementById('close-panel');
+        const settingsPanel = document.getElementById('settings-panel');
+        const textBtn = document.getElementById('text-btn');
+        const leftText = document.getElementById('left-text');
+        const rightText = document.getElementById('right-text');
+        const micBtn = document.getElementById('mic-btn');
+        const micAnimation = document.getElementById('mic-animation');
+        const startBtn = document.getElementById('start-btn');
+        const bookBtn = document.getElementById('book-btn');
+        const notification = document.getElementById('notification');
+        
+        // WebRTC和ASR相关元素
+        const sessionIdInput = document.getElementById('sessionid');
+        const audio = document.getElementById('audio');
+        const video = document.getElementById('video');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const connectionStatus = document.getElementById('connection-status');
+        const asrResult = document.getElementById('asr-result');
+        const asrText = document.getElementById('asr-text');
+        const aiSubtitle = document.getElementById('ai-subtitle');
+        const userSubtitle = document.getElementById('user-subtitle');
+        
+        // 设置面板开关
+        settingsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('设置按钮被点击');
             
-            mobileNav.addEventListener('change', function() {
-                const targetHash = '#' + this.value;
-                setActiveSection(targetHash);
-                window.location.hash = targetHash;
-            });
-
-            setActiveSection(window.location.hash);
-
-            // Architecture Diagram Interactivity
-            const diagramNodes = document.querySelectorAll('.diagram-node');
-            const diagramInfoBox = document.getElementById('diagram-info');
-            diagramNodes.forEach(node => {
-                node.addEventListener('mouseenter', function() {
-                    const info = this.getAttribute('data-info');
-                    diagramInfoBox.textContent = info;
-                    diagramInfoBox.style.opacity = '1';
-                });
-                node.addEventListener('mouseleave', function() {
-                    diagramInfoBox.style.opacity = '0';
-                });
-            });
-
-            // ERD Interactivity
-            const erdNodes = document.querySelectorAll('.erd-node');
-            const erdInfoBox = document.getElementById('erd-info');
-            erdNodes.forEach(node => {
-                node.addEventListener('click', function() {
-                    const info = this.getAttribute('data-info');
-                    erdInfoBox.textContent = info;
-                    erdNodes.forEach(n => n.classList.remove('ring-2', 'ring-blue-500'));
-                    this.classList.add('ring-2', 'ring-blue-500');
-                });
-            });
-
-            // Roadmap Timeline
-            const timelineContainer = document.getElementById('timeline-container');
-            const roadmapData = [
-                {
-                    phase: '阶段一 (1-4个月)',
-                    title: '核心平台与文本对话',
-                    description: '搭建功能完备、仅支持文本对话的Web应用。完成基础架构、安全认证和流式文本生成。',
-                    tasks: [
-                        '项目初始化与Git仓库配置',
-                        'Spring Boot多模块项目搭建',
-                        'JWT安全认证实现',
-                        '流式文本生成接口开发',
-                        '基础聊天UI构建'
-                    ]
-                },
-                {
-                    phase: '阶段二 (5-8个月)',
-                    title: '图像与音频生成',
-                    description: '扩展平台能力，支持图片和音频的生成。实现异步任务管理和媒体资源持久化。',
-                    tasks: [
-                        'async_tasks和media_assets表设计',
-                        '阿里云OSS集成',
-                        '文生图API对接',
-                        'TTS流式音频生成',
-                        '图片网格组件开发'
-                    ]
-                },
-                {
-                    phase: '阶段三 (9-12个月)',
-                    title: '视频生成与HTML渲染',
-                    description: '实现技术上最复杂的视频生成和安全的HTML渲染功能，平台具备完整四模态能力。',
-                    tasks: [
-                        '图生视频API对接',
-                        'OWASP HTML净化管道',
-                        '视频播放组件开发',
-                        '安全HTML渲染实现',
-                        '四模态生成能力整合'
-                    ]
-                },
-                {
-                    phase: '阶段四 (13-15个月)',
-                    title: '教育系统与体验优化',
-                    description: '构建教育内容模块，并根据前期反馈打磨核心聊天体验，准备小范围用户测试。',
-                    tasks: [
-                        '教育视频CRUD API开发',
-                        '视频浏览页面构建',
-                        '内容选择提交功能',
-                        'UI/UX优化',
-                        '小范围用户测试准备'
-                    ]
-                },
-                {
-                    phase: '阶段五 (16-18个月)',
-                    title: '微信小程序与公开发布',
-                    description: '使用跨端框架将应用扩展到移动端，并准备正式上线，进入持续迭代周期。',
-                    tasks: [
-                        'uni-app跨端项目搭建',
-                        'Vue组件迁移适配',
-                        '微信登录集成',
-                        '全面功能测试',
-                        '生产环境部署上线'
-                    ]
-                }
-            ];
-
-            roadmapData.forEach((item, index) => {
-                const div = document.createElement('div');
-                div.className = 'timeline-item mb-10 ml-4 relative';
-                div.innerHTML = `
-                    <div class="absolute w-3 h-3 bg-gray-200 rounded-full mt-1.5 -left-1.5 border border-white"></div>
-                    <time class="mb-1 text-sm font-normal leading-none text-gray-500">${item.phase}</time>
-                    <h3 class="text-lg font-semibold text-gray-900">${item.title}</h3>
-                    <p class="mb-2 text-base font-normal text-gray-600">${item.description}</p>
-                    <div class="mt-3">
-                        <button class="text-blue-600 text-sm flex items-center toggle-tasks">
-                            查看任务 <i class="fas fa-chevron-down ml-1 text-xs"></i>
-                        </button>
-                        <ul class="list-disc pl-5 mt-2 text-sm text-gray-600 hidden task-list">
-                            ${item.tasks.map(task => `<li>${task}</li>`).join('')}
-                        </ul>
-                    </div>
-                `;
-                
-                // Add click event for accordion
-                const toggleBtn = div.querySelector('.toggle-tasks');
-                const taskList = div.querySelector('.task-list');
-                
-                toggleBtn.addEventListener('click', () => {
-                    taskList.classList.toggle('hidden');
-                    const icon = toggleBtn.querySelector('i');
-                    if (taskList.classList.contains('hidden')) {
-                        toggleBtn.innerHTML = '查看任务 <i class="fas fa-chevron-down ml-1 text-xs"></i>';
-                    } else {
-                        toggleBtn.innerHTML = '收起任务 <i class="fas fa-chevron-up ml-1 text-xs"></i>';
-                    }
-                });
-                
-                timelineContainer.appendChild(div);
-            });
-            if(timelineContainer.firstChild) {
-                timelineContainer.firstChild.classList.add('active');
+            settingsPanel.classList.toggle('active');
+            settingsBtn.classList.toggle('active');
+            
+            // 如果打开设置面板，加载知识库列表
+            if (settingsPanel.classList.contains('active')) {
+                loadKnowledgeBases();
             }
-
-            // Roadmap Chart
-            const ctx = document.getElementById('roadmap-chart').getContext('2d');
-            new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['阶段一', '阶段二', '阶段三', '阶段四', '阶段五'],
-                    datasets: [{
-                        label: '开发月数',
-                        data: [4, 4, 4, 3, 3],
-                        backgroundColor: [
-                            'rgba(59, 130, 246, 0.7)',
-                            'rgba(16, 185, 129, 0.7)',
-                            'rgba(239, 68, 68, 0.7)',
-                            'rgba(245, 158, 11, 0.7)',
-                            'rgba(139, 92, 246, 0.7)'
-                        ],
-                        borderColor: '#f8f7f4',
-                        borderWidth: 4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.label || '';
-                                    if (label) {
-                                        label += ': ';
-                                    }
-                                    if (context.parsed !== null) {
-                                        label += context.parsed + '个月';
-                                    }
-                                    return label;
+        });
+        
+        // 关闭设置面板
+        closePanelBtn.addEventListener('click', () => {
+            settingsPanel.classList.remove('active');
+            settingsBtn.classList.remove('active');
+        });
+        
+        // 知识库管理按钮事件
+        document.getElementById('create-kb-btn').addEventListener('click', createKnowledgeBase);
+        document.getElementById('delete-kb-btn').addEventListener('click', deleteKnowledgeBase);
+        document.getElementById('switch-kb-btn').addEventListener('click', switchKnowledgeBase);
+        
+        // 知识库选择变化时自动切换
+        document.getElementById('kb-select').addEventListener('change', switchKnowledgeBase);
+        
+        // RAG提示词更新
+        document.getElementById('rag-prompt').addEventListener('blur', updateSystemPrompt);
+        
+        // 文本输入功能
+        textBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('文本按钮被点击');
+            
+            if (!state.isConnected || !state.sessionId) {
+                showNotification('请先点击开始按钮连接WebRTC');
+                return;
+            }
+            
+            // 弹出文本输入对话框
+            const userText = prompt('请输入要发送的文本:');
+            if (userText && userText.trim()) {
+                console.log('用户输入文本:', userText);
+                sendTextToAI(userText.trim());
+            }
+        });
+        
+        // 发送文本到AI
+        async function sendTextToAI(text) {
+            if (!state.sessionId) {
+                showNotification('请先建立WebRTC连接');
+                return;
+            }
+            
+            // 显示用户输入
+            showASRResult(text);
+            
+            // 先发送打断请求
+            await api.interruptTalk(state.sessionId).catch(e => console.error('打断请求失败:', e));
+            
+            const payload = {
+                sessionid: state.sessionId,
+                text: text,
+                interrupt: false,
+                use_rag: false,
+                kb_name: null,
+                type: 'chat',
+                tts_options: {}
+            };
+            
+            try {
+                const response = await api.sendHumanText(payload);
+                
+                // 处理流式响应
+                if (response.body) {
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    let llmResponse = '';
+                    
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop();
+                        
+                        for (const line of lines) {
+                            if (line.trim() === '') continue;
+                            try {
+                                const jsonData = JSON.parse(line);
+                                
+                                // 处理LLM流式响应
+                                if (jsonData.response) {
+                                    llmResponse += jsonData.response;
+                                    showAIResponse(llmResponse);
                                 }
+                                
+                                // 处理完整的LLM响应
+                                if (jsonData.llm_response) {
+                                    llmResponse = jsonData.llm_response;
+                                    showAIResponse(llmResponse);
+                                }
+                            } catch (e) {
+                                console.warn('无法解析的JSON行:', line);
                             }
                         }
                     }
+                    
+                    // 处理剩余buffer
+                    if (buffer.trim() !== '') {
+                        try {
+                            const jsonData = JSON.parse(buffer);
+                            if (jsonData.response) {
+                                llmResponse += jsonData.response;
+                                showAIResponse(llmResponse);
+                            }
+                            if (jsonData.llm_response) {
+                                showAIResponse(jsonData.llm_response);
+                            }
+                        } catch (e) {
+                            console.warn('无法解析的JSON行 (buffer):', buffer);
+                        }
+                    }
                 }
-            });
+                
+                showNotification('文本处理完成');
+            } catch (e) {
+                showNotification('文本处理失败');
+                console.error('文本处理错误:', e);
+            }
+        }
+        
+        // 语音录制功能
+        async function startRecording() {
+            if (!state.sessionId) {
+                showNotification('请先连接WebRTC');
+                return;
+            }
+            
+            // 先发送打断请求
+            await api.interruptTalk(state.sessionId).catch(e => console.error("打断请求失败:", e));
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                state.currentStream = stream; // 保存stream引用
+                state.mediaRecorder = new MediaRecorder(stream);
+                state.audioChunks = [];
+                
+                console.log('获取麦克风权限成功，开始录音');
+                
+                state.mediaRecorder.ondataavailable = e => {
+                    if (e.data.size > 0) {
+                        state.audioChunks.push(e.data);
+                        console.log('录音数据块大小:', e.data.size);
+                    }
+                };
+                
+                state.mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(state.audioChunks, { type: 'audio/wav' });
+                    
+                    const formData = new FormData();
+                    formData.append('file', audioBlob, 'recording.wav');
+                    formData.append('sessionid', state.sessionId);
+                    formData.append('use_rag', 'false');
+                    formData.append('tts_options', JSON.stringify({}));
+                    
+                    try {
+                        const response = await api.sendHumanAudio(formData);
+                        
+                        // 处理流式响应
+                        if (response.body) {
+                            const reader = response.body.getReader();
+                            const decoder = new TextDecoder();
+                            let buffer = '';
+                            let asrResult = '';
+                            let llmResponse = '';
+                            
+                            while (true) {
+                                const { done, value } = await reader.read();
+                                if (done) break;
+                                
+                                buffer += decoder.decode(value, { stream: true });
+                                const lines = buffer.split('\n');
+                                buffer = lines.pop();
+                                
+                                for (const line of lines) {
+                                    if (line.trim() === '') continue;
+                                    try {
+                                        const jsonData = JSON.parse(line);
+                                        
+                                        // 处理ASR结果
+                                        if (jsonData.asr_result) {
+                                            asrResult = jsonData.asr_result;
+                                            showASRResult(asrResult);
+                                        }
+                                        
+                                        // 处理LLM流式响应
+                                        if (jsonData.response) {
+                                            llmResponse += jsonData.response;
+                                            showAIResponse(llmResponse);
+                                        }
+                                        
+                                        // 处理完整的LLM响应
+                                        if (jsonData.llm_response) {
+                                            llmResponse = jsonData.llm_response;
+                                            showAIResponse(llmResponse);
+                                        }
+                                    } catch (e) {
+                                        console.warn('无法解析的JSON行:', line);
+                                    }
+                                }
+                            }
+                            
+                            // 处理剩余buffer
+                            if (buffer.trim() !== '') {
+                                try {
+                                    const jsonData = JSON.parse(buffer);
+                                    if (jsonData.asr_result) {
+                                        showASRResult(jsonData.asr_result);
+                                    }
+                                    if (jsonData.response) {
+                                        llmResponse += jsonData.response;
+                                        showAIResponse(llmResponse);
+                                    }
+                                    if (jsonData.llm_response) {
+                                        showAIResponse(jsonData.llm_response);
+                                    }
+                                } catch (e) {
+                                    console.warn('无法解析的JSON行 (buffer):', buffer);
+                                }
+                            }
+                        }
+                        
+                        showNotification('语音处理完成');
+                    } catch (e) {
+                        showNotification('语音处理失败');
+                        console.error('语音处理错误:', e);
+                    } finally {
+                        // 清理音频流
+                        if (state.currentStream) {
+                            state.currentStream.getTracks().forEach(track => track.stop());
+                            state.currentStream = null;
+                        }
+                    }
+                };
+
+                state.mediaRecorder.start();
+                state.isRecording = true;
+
+            } catch (e) {
+                showNotification('无法访问麦克风');
+            }
+        }
+        
+        function stopRecording() {
+            if (state.mediaRecorder && state.isRecording) {
+                state.mediaRecorder.stop();
+                state.isRecording = false;
+                console.log('停止录音');
+                
+                // 清理音频流
+                if (state.currentStream) {
+                    state.currentStream.getTracks().forEach(track => track.stop());
+                    state.currentStream = null;
+                }
+            }
+        }
+        
+        // 麦克风按钮 - 修改为录音控制
+        micBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('麦克风按钮被点击，当前录音状态:', state.isRecording);
+            console.log('当前连接状态:', state.isConnected, '会话ID:', state.sessionId);
+            
+            if (!state.isConnected || !state.sessionId) {
+                showNotification('请先点击开始按钮连接WebRTC');
+                return;
+            }
+            
+            if (!state.isRecording) {
+                startRecording();
+                micBtn.classList.add('active');
+                micAnimation.classList.add('active');
+                showNotification('开始录音...');
+            } else {
+                stopRecording();
+                micBtn.classList.remove('active');
+                micAnimation.classList.remove('active');
+                showNotification('录音结束，处理中...');
+            }
+        });
+        
+        // WebRTC连接功能
+        function connectWebRTC() {
+            updateConnectionStatus('连接中...', '正在建立WebRTC连接');
+            
+            try {
+                window.start();
+                
+                // 设置WebRTC监听器
+                setTimeout(() => {
+                    setupWebRTCListeners();
+                }, 500);
+                
+                // 监听连接状态
+                const checkConnection = setInterval(() => {
+                    if (sessionIdInput.value && sessionIdInput.value !== "0") {
+                        clearInterval(checkConnection);
+                        state.sessionId = sessionIdInput.value;
+                        updateConnectionStatus('已连接', '语音助手已就绪');
+                        showNotification('WebRTC连接成功！');
+                        
+                        // 显示字幕区域
+                        leftText.classList.add('visible');
+                        rightText.classList.add('visible');
+                        
+                        // 开启心跳
+                        if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
+                        state.heartbeatInterval = setInterval(() => {
+                            if (state.sessionId) {
+                                api.sessionHeartbeat(state.sessionId).catch(e => console.error("心跳失败:", e));
+                            }
+                        }, 20000);
+                        
+                        console.log('WebRTC连接成功，会话ID:', state.sessionId);
+                    }
+                }, 500);
+                
+            } catch (e) {
+                updateConnectionStatus('连接失败', '无法建立WebRTC连接');
+                showNotification('WebRTC连接失败');
+                console.error('WebRTC连接错误:', e);
+            }
+        }
+        
+        function disconnectWebRTC() {
+            if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
+            state.heartbeatInterval = null;
+            
+            if (window.stop) window.stop();
+            state.sessionId = null;
+            sessionIdInput.value = '';
+            updateConnectionStatus('未连接', '语音助手已断开');
+            showNotification('WebRTC连接已断开');
+        }
+        
+        // 开始按钮 - 修改为WebRTC连接控制
+        startBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const isActive = startBtn.classList.contains('active');
+            console.log('开始按钮被点击，当前状态:', isActive ? '已连接' : '未连接');
+            
+            if (!isActive) {
+                // 开始连接
+                console.log('开始建立WebRTC连接');
+                connectWebRTC();
+                startBtn.classList.add('active');
+                startBtn.innerHTML = '<i class="fas fa-stop"></i>';
+                startBtn.title = '断开连接';
+            } else {
+                // 断开连接
+                console.log('断开WebRTC连接');
+                disconnectWebRTC();
+                startBtn.classList.remove('active');
+                startBtn.innerHTML = '<i class="fas fa-play"></i>';
+                startBtn.title = '开始连接';
+                
+                // 清空字幕
+                clearSubtitles();
+            }
+        });
+        
+        // 知识库管理功能
+        async function loadKnowledgeBases() {
+            try {
+                const data = await api.getKbList();
+                const kbSelect = document.getElementById('kb-select');
+                kbSelect.innerHTML = '<option value="">无</option>';
+                
+                if (data.knowledge_bases && data.knowledge_bases.length > 0) {
+                    data.knowledge_bases.forEach(kb => {
+                        const option = document.createElement('option');
+                        option.value = kb;
+                        option.textContent = kb;
+                        kbSelect.appendChild(option);
+                    });
+                }
+                
+                // 加载当前配置
+                const config = await api.getConfig();
+                if (config.current_kb) {
+                    kbSelect.value = config.current_kb;
+                }
+                document.getElementById('rag-prompt').value = config.system_prompt || '';
+                
+            } catch (e) {
+                console.error('加载知识库失败:', e);
+            }
+        }
+        
+        async function createKnowledgeBase() {
+            const kbName = document.getElementById('kb-name').value.trim();
+            const file = document.getElementById('kb-file').files[0];
+            
+            if (!kbName.match(/^[a-zA-Z0-9]{3,20}$/)) {
+                showNotification('知识库名称不合法 (3-20位英文/数字)');
+                return;
+            }
+            if (!file) {
+                showNotification('请选择要上传的文件');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('kb_name', kbName);
+            formData.append('file', file);
+            
+            try {
+                await api.createKb(formData);
+                showNotification('知识库创建成功');
+                document.getElementById('kb-name').value = '';
+                document.getElementById('kb-file').value = '';
+                await loadKnowledgeBases();
+            } catch (e) {
+                showNotification('知识库创建失败');
+            }
+        }
+        
+        async function deleteKnowledgeBase() {
+            const selectedKb = document.getElementById('kb-select').value;
+            if (!selectedKb) {
+                showNotification('请选择要删除的知识库');
+                return;
+            }
+            
+            if (confirm(`确定要删除知识库 "${selectedKb}" 吗？`)) {
+                try {
+                    await api.deleteKb(selectedKb);
+                    showNotification('知识库删除成功');
+                    await loadKnowledgeBases();
+                } catch (e) {
+                    showNotification('知识库删除失败');
+                }
+            }
+        }
+        
+        async function switchKnowledgeBase() {
+            const selectedKb = document.getElementById('kb-select').value;
+            try {
+                await api.switchKb(selectedKb);
+                showNotification(selectedKb ? `已切换到知识库: ${selectedKb}` : '已取消使用知识库');
+            } catch (e) {
+                showNotification('知识库切换失败');
+            }
+        }
+        
+        async function updateSystemPrompt() {
+            const prompt = document.getElementById('rag-prompt').value;
+            try {
+                await api.updatePrompt(prompt);
+                showNotification('提示词更新成功');
+            } catch (e) {
+                showNotification('提示词更新失败');
+            }
+        }
+        
+        // 书本按钮 - 跳转页面
+        bookBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('书本按钮被点击');
+            showNotification('正在跳转到webrtc1.html...');
+            
+            setTimeout(() => {
+                window.location.href = 'webrtc1.html';
+            }, 500);
+        });
+        
+        // 状态管理
+        let state = {
+            sessionId: null,
+            isRecording: false,
+            mediaRecorder: null,
+            audioChunks: [],
+            isConnected: false,
+            heartbeatInterval: null,
+            currentStream: null
+        };
+        
+        // 显示通知
+        function showNotification(message) {
+            notification.textContent = message;
+            notification.classList.add('show');
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 2000);
+        }
+        
+        // 更新连接状态
+        function updateConnectionStatus(status, message) {
+            connectionStatus.textContent = `WebRTC状态: ${status}`;
+            statusText.textContent = message;
+            
+            if (status === '已连接') {
+                statusDot.style.backgroundColor = '#4caf50';
+                state.isConnected = true;
+            } else {
+                statusDot.style.backgroundColor = '#f44336';
+                state.isConnected = false;
+            }
+        }
+        
+        // 显示ASR结果（用户输入 - 黄色）
+        function showASRResult(text) {
+            if (!text) return;
+            
+            asrText.textContent = text;
+            asrResult.style.opacity = '1';
+            userSubtitle.textContent = `用户: ${text}`;
+            rightText.classList.add('visible');
+            
+            console.log('显示ASR结果:', text);
+            
+            // 5秒后隐藏ASR结果框
+            setTimeout(() => {
+                asrResult.style.opacity = '0';
+            }, 5000);
+        }
+        
+        // 显示AI回复（LLM响应 - 绿色）
+        function showAIResponse(text) {
+            if (!text) return;
+            
+            aiSubtitle.textContent = `AI: ${text}`;
+            leftText.classList.add('visible');
+            
+            console.log('显示AI回复:', text);
+        }
+        
+        // 清空字幕
+        function clearSubtitles() {
+            aiSubtitle.textContent = 'AI回复将在这里显示...';
+            userSubtitle.textContent = '用户语音识别结果将在这里显示...';
+            leftText.classList.remove('visible');
+            rightText.classList.remove('visible');
+            asrResult.style.opacity = '0';
+        }
+        
+        // API调用函数
+        const api = {
+            async fetch(url, options = {}) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({error: '未知错误'}));
+                        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                    }
+                    return response;
+                } catch (error) {
+                    showNotification(`请求失败: ${error.message}`);
+                    console.error('API Error:', error);
+                    throw error;
+                }
+            },
+            
+            sendHumanAudio: (formData) => api.fetch('/audio_chat', { method: 'POST', body: formData }),
+            sendHumanText: (payload) => api.fetch('/human', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }),
+            interruptTalk: (sessionId) => api.fetch('/interrupt_talk', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ sessionid: sessionId }) }),
+            sessionHeartbeat: (sessionId) => api.fetch('/session/heartbeat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ sessionid: Number(sessionId) }) }),
+            
+            // 知识库管理API
+            getKbList: () => api.fetch('/kb/list').then(res => res.json()),
+            createKb: (formData) => api.fetch('/kb/create', { method: 'POST', body: formData }),
+            deleteKb: (name) => api.fetch(`/kb/delete/${name}`, { method: 'DELETE' }),
+            switchKb: (name) => api.fetch(`/kb/switch/${name}`, { method: 'POST' }),
+            getConfig: () => api.fetch('/config/get').then(res => res.json()),
+            updatePrompt: (prompt) => api.fetch('/config/prompt', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt}) })
+        };
+        
+        // WebRTC连接状态监听
+        function setupWebRTCListeners() {
+            if (typeof pc !== 'undefined' && pc) {
+                pc.addEventListener('connectionstatechange', () => {
+                    console.log(`WebRTC连接状态变更: ${pc.connectionState}`);
+                    updateConnectionStatus(pc.connectionState, `连接状态: ${pc.connectionState}`);
+                    
+                    switch (pc.connectionState) {
+                        case 'connected':
+                            updateConnectionStatus('已连接', '语音助手已就绪');
+                            break;
+                        case 'disconnected':
+                            updateConnectionStatus('连接断开', '正在尝试重连...');
+                            break;
+                        case 'failed':
+                            updateConnectionStatus('连接失败', '请重新连接');
+                            disconnectWebRTC();
+                            break;
+                    }
+                });
+                
+                pc.addEventListener('track', (evt) => {
+                    if (evt.track.kind == 'video') {
+                        video.srcObject = evt.streams[0];
+                    } else {
+                        audio.srcObject = evt.streams[0];
+                    }
+                });
+            }
+        }
+        
+        // 初始化检查
+        setTimeout(() => {
+            setupWebRTCListeners();
+        }, 1000);
+        
+        // 页面初始化
+        function initializePage() {
+            console.log('页面初始化开始');
+            
+            // 设置初始状态
+            updateConnectionStatus('未连接', '语音助手待机中');
+            clearSubtitles();
+            
+            // 设置按钮标题
+            startBtn.title = '开始连接';
+            micBtn.title = '语音录音';
+            settingsBtn.title = '系统设置';
+            textBtn.title = '文本输入';
+            bookBtn.title = '跳转到webrtc1.html';
+            
+            console.log('页面初始化完成');
+        }
+        
+        // 模拟加载
+        setTimeout(() => {
+            document.querySelector('.welcome-text').innerHTML = 
+                '系统初始化完成<br>点击播放按钮连接WebRTC<br>点击麦克风按钮开始语音交互';
+        }, 2000);
+        
+        // 页面加载完成后初始化
+        setTimeout(() => {
+            initializePage();
+        }, 3000);
+        
+        // 添加键盘快捷键支持
+        document.addEventListener('keydown', (e) => {
+            // 空格键：开始/停止录音
+            if (e.code === 'Space' && !e.repeat) {
+                e.preventDefault();
+                if (state.isConnected) {
+                    if (!state.isRecording) {
+                        micBtn.click();
+                    }
+                }
+            }
+            // Escape键：停止录音
+            if (e.code === 'Escape' && state.isRecording) {
+                micBtn.click();
+            }
+        });
+        
+        // 添加页面可见性检测
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && state.isRecording) {
+                // 页面隐藏时停止录音
+                stopRecording();
+                micBtn.classList.remove('active');
+                micAnimation.classList.remove('active');
+                showNotification('页面隐藏，录音已停止');
+            }
         });
     </script>
 </body>

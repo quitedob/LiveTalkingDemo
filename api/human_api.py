@@ -74,6 +74,7 @@ async def describe_image(request: web.Request):
 async def human(request):
     """
     处理文本输入，根据参数选择标准对话或RAG增强对话。
+    返回流式响应，包含LLM响应。
     """
     try:
         params = await request.json()
@@ -89,24 +90,42 @@ async def human(request):
         tts_options = params.get('tts_options', {})
         use_rag = params.get('use_rag', False)
         kb_name = params.get('kb_name')
+        text = params.get('text', '')
 
-        async def stream_pipeline(text):
+        # 创建流式响应
+        response = web.StreamResponse()
+        response.headers['Content-Type'] = 'application/json'
+        response.headers['Cache-Control'] = 'no-cache'
+        response.headers['Connection'] = 'keep-alive'
+        await response.prepare(request)
+
+        async def stream_pipeline(input_text):
             try:
                 if use_rag:
                     rag_core.set_current_kb(kb_name)
-                    llm_stream = rag_core.get_response(text)
+                    llm_stream = rag_core.get_response(input_text)
                 else:
-                    llm_stream = llm_client.ask(text)
+                    llm_stream = llm_client.ask(input_text)
                 
-                sentence_stream = _llm_to_sentence_stream(llm_stream)
+                # 收集完整的LLM响应用于流式传输
+                full_response = ""
+                async for chunk in llm_stream:
+                    full_response += chunk
+                    # 发送流式LLM响应到前端
+                    chunk_data = json.dumps({"response": chunk}) + "\n"
+                    await response.write(chunk_data.encode('utf-8'))
+                
+                # 发送完整响应
+                final_data = json.dumps({"llm_response": full_response}) + "\n"
+                await response.write(final_data.encode('utf-8'))
+                
+                # 同时驱动数字人
+                sentence_stream = _llm_to_sentence_stream(llm_client.ask(input_text) if not use_rag else rag_core.get_response(input_text))
                 
                 if sessionid in nerfreals:
                     # ======================================================
                     # ★★★ 核心修复：使用 **tts_options 解包字典 ★★★
                     # ======================================================
-                    # 之前的代码:
-                    # await nerfreals[sessionid].put_msg_txt(sentence_stream, tts_options=tts_options)
-                    # 修复后的代码:
                     await nerfreals[sessionid].put_msg_txt(sentence_stream, **tts_options)
                     # ======================================================
                 else:
@@ -114,14 +133,15 @@ async def human(request):
 
             except Exception as e:
                 logger.error(f"流式处理管道出错 (会话 {sessionid}): {e}", exc_info=True)
+                error_data = json.dumps({"error": str(e)}) + "\n"
+                await response.write(error_data.encode('utf-8'))
+            finally:
+                await response.write_eof()
 
-        # 创建一个后台任务来处理整个流式对话，立即返回HTTP响应
-        asyncio.create_task(stream_pipeline(params['text']))
-
-        return web.Response(
-            content_type="application/json",
-            text=json.dumps({"code": 0, "msg": "ok"})
-        )
+        # 执行流式处理
+        await stream_pipeline(text)
+        return response
+        
     except Exception as e:
         logger.exception('human接口异常:')
         return web.Response(
@@ -156,6 +176,7 @@ async def humanaudio(request):
 async def audio_chat(request):
     """
     处理语音聊天，根据参数选择标准对话或RAG增强对话。
+    返回流式响应，包含ASR结果和LLM响应。
     """
     try:
         form = await request.post()
@@ -197,6 +218,17 @@ async def audio_chat(request):
         tts_options_str = form.get('tts_options', '{}')
         tts_options = json.loads(tts_options_str)
 
+        # 创建流式响应
+        response = web.StreamResponse()
+        response.headers['Content-Type'] = 'application/json'
+        response.headers['Cache-Control'] = 'no-cache'
+        response.headers['Connection'] = 'keep-alive'
+        await response.prepare(request)
+
+        # 立即发送ASR结果
+        asr_data = json.dumps({"asr_result": transcribed_text}) + "\n"
+        await response.write(asr_data.encode('utf-8'))
+
         async def stream_pipeline(text):
             try:
                 if use_rag:
@@ -205,7 +237,20 @@ async def audio_chat(request):
                 else:
                     llm_stream = llm_client.ask(text)
                 
-                sentence_stream = _llm_to_sentence_stream(llm_stream)
+                # 收集完整的LLM响应用于流式传输
+                full_response = ""
+                async for chunk in llm_stream:
+                    full_response += chunk
+                    # 发送流式LLM响应到前端
+                    chunk_data = json.dumps({"response": chunk}) + "\n"
+                    await response.write(chunk_data.encode('utf-8'))
+                
+                # 发送完整响应
+                final_data = json.dumps({"llm_response": full_response}) + "\n"
+                await response.write(final_data.encode('utf-8'))
+                
+                # 同时驱动数字人
+                sentence_stream = _llm_to_sentence_stream(llm_client.ask(text) if not use_rag else rag_core.get_response(text))
                 
                 if sessionid in nerfreals:
                     # ======================================================
@@ -218,10 +263,15 @@ async def audio_chat(request):
 
             except Exception as e:
                 logger.error(f"语音聊天的流式处理管道出错 (会话 {sessionid}): {e}", exc_info=True)
+                error_data = json.dumps({"error": str(e)}) + "\n"
+                await response.write(error_data.encode('utf-8'))
+            finally:
+                await response.write_eof()
 
-        asyncio.create_task(stream_pipeline(transcribed_text))
-
-        return web.Response(content_type="application/json", text=json.dumps({"code": 0, "msg": "ok"}))
+        # 执行流式处理
+        await stream_pipeline(transcribed_text)
+        return response
+        
     except Exception as e:
         logger.exception('audio_chat接口异常:')
         return web.Response(
