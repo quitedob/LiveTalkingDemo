@@ -1,0 +1,535 @@
+/* 智能语音助手控制面板样式文件 */
+
+/* 基础样式重置 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+}
+
+/* 页面主体样式 */
+body {
+    background-color: #000;
+    color: #fff;
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* 视频背景 */
+#video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain; /* 改为contain，确保视频完整显示 */
+    z-index: 0;
+}
+
+/* 主屏幕容器 */
+#screen {
+    position: relative; /* 改为 relative 以便内部元素定位 */
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 1;
+    background: linear-gradient(135deg, rgba(15, 15, 15, 0.08) 0%, rgba(0, 0, 0, 0.08) 100%); /* 降低蒙层透明度 */
+}
+
+/* 状态显示区域 */
+.status {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 状态指示点 */
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #4caf50;
+}
+
+/* 欢迎文本样式 */
+.welcome-text {
+    font-size: 2.5rem;
+    font-weight: 300;
+    text-align: center;
+    margin-bottom: 2rem;
+    max-width: 80%;
+    color: rgba(255, 255, 255, 0.9);
+    line-height: 1.4;
+}
+
+.welcome-text span {
+    color: #4caf50;
+    font-weight: 600;
+}
+
+/* 工具栏容器 */
+#toolbar-container {
+    position: absolute;
+    bottom: 0; /* 调整回底部 */
+    left: 50%;
+    transform: translateX(-50%) translateY(100%); /* 初始状态在屏幕外 */
+    width: auto;
+    height: 80px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    opacity: 0; /* 初始透明 */
+}
+
+/* 鼠标悬停在body时显示工具栏 */
+body:hover #toolbar-container {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* 工具栏样式 */
+#toolbar {
+    background: rgba(30, 30, 30, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 35px; /* 全圆角 */
+    height: 70px;
+    /* 移除宽度设置，让其自适应内容 */
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0 30px; /* 增加左右内边距 */
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 工具按钮样式 */
+.tool-btn {
+    background: rgba(50, 50, 50, 0.7);
+    border: none;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: #fff;
+    font-size: 20px;
+}
+
+.tool-btn:hover {
+    background: rgba(76, 175, 80, 0.8);
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
+}
+
+.tool-btn.active {
+    background: #4caf50;
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
+}
+
+/* 设置面板样式 */
+#settings-panel {
+    position: absolute;
+    top: 0;
+    right: -400px;
+    width: 380px;
+    height: 100%;
+    background: rgba(25, 25, 25, 0.95);
+    backdrop-filter: blur(10px);
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 100;
+    transition: right 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+    padding: 20px;
+    overflow-y: auto;
+    box-shadow: -5px 0 25px rgba(0, 0, 0, 0.5);
+}
+
+#settings-panel.active {
+    right: 0;
+}
+
+/* 面板头部 */
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.panel-header h2 {
+    font-weight: 400;
+    font-size: 1.8rem;
+    color: #4caf50;
+}
+
+/* 关闭按钮 */
+.close-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 24px;
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.close-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+/* 设置区块 */
+.settings-section {
+    margin-bottom: 30px;
+    background: rgba(40, 40, 40, 0.6);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* 区块头部 */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.section-header h3 {
+    font-weight: 500;
+    font-size: 1.3rem;
+    color: #fff;
+}
+
+/* 操作按钮组 */
+.section-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* 操作按钮 */
+.action-btn {
+    background: rgba(76, 175, 80, 0.2);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    color: #4caf50;
+    border-radius: 5px;
+    padding: 6px 12px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+    background: rgba(76, 175, 80, 0.3);
+}
+
+/* 设置内容区域 */
+.settings-content {
+    padding: 10px 0;
+}
+
+/* 设置项 */
+.settings-item {
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.settings-item:last-child {
+    border-bottom: none;
+}
+
+.settings-item label {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 1rem;
+}
+
+/* 表单元素样式 */
+select, textarea {
+    background: rgba(30, 30, 30, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: #fff;
+    width: 100%;
+    margin-top: 5px;
+}
+
+textarea {
+    height: 100px;
+    resize: vertical;
+}
+
+/* 侧边字幕文本 */
+.side-text {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.2rem;
+    font-style: italic;
+    max-width: 300px;
+    line-height: 1.6;
+    transition: all 0.5s ease;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 5;
+    /* 移除背景和边框，由内部气泡 div 处理 */
+}
+
+/* 新增：字幕气泡样式 */
+.subtitle-bubble {
+    padding: 12px 18px;
+    border-radius: 20px;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    max-height: 250px; /* 增加最大高度 */
+    overflow-y: auto;
+    word-wrap: break-word;
+}
+
+
+/* 左侧文本 - AI回复 */
+#left-text {
+    left: 3%;
+    text-align: left;
+}
+
+#left-text .subtitle-bubble {
+    background: rgba(76, 175, 80, 0.5); /* AI回复 - 绿色 */
+    color: #fff;
+    border-top-left-radius: 5px; /* 调整圆角，模拟对话框尖角 */
+}
+
+/* 右侧文本 - 用户输入 */
+#right-text {
+    right: 3%;
+    text-align: right;
+    display: flex; /* 用于内部元素对齐 */
+    justify-content: flex-end;
+}
+
+#right-text .subtitle-bubble {
+    background: rgba(255, 193, 7, 0.5); /* 用户输入 - 黄色 */
+    color: #fff;
+    border-top-right-radius: 5px; /* 调整圆角，模拟对话框尖角 */
+}
+
+
+.side-text.visible {
+    opacity: 1;
+}
+
+/* 麦克风动画 */
+.mic-animation {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 200px;
+    height: 200px;
+    border-radius: 50%;
+    background: rgba(76, 175, 80, 0.1);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 2;
+    animation: pulse 2s infinite;
+}
+
+.mic-animation.active {
+    display: flex;
+}
+
+.mic-animation i {
+    font-size: 60px;
+    color: rgba(76, 175, 80, 0.8);
+}
+
+/* 脉冲动画 */
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 30px rgba(76, 175, 80, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+    }
+}
+
+/* 通知样式 */
+.notification {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(30, 30, 30, 0.9);
+    border: 1px solid rgba(76, 175, 80, 0.5);
+    border-radius: 8px;
+    padding: 12px 25px;
+    color: #fff;
+    font-size: 0.9rem;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 200;
+}
+
+.notification.show {
+    opacity: 1;
+}
+
+/* WebRTC 连接状态样式 */
+.connection-status {
+    position: absolute;
+    top: 60px;
+    left: 20px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    background: rgba(30, 30, 30, 0.8);
+    padding: 8px 12px;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 隐藏元素 */
+.hidden {
+    display: none !important;
+}
+
+/* 即时语音交互设置面板 */
+.instant-settings {
+    position: absolute;
+    top: 20px;
+    right: 20px; /* 直接定位在右上角 */
+    z-index: 50;
+    opacity: 0; /* 默认完全透明 */
+    transition: opacity 0.4s ease; /* 过渡效果 */
+    pointer-events: none;
+}
+
+.instant-settings.visible {
+    pointer-events: auto; /* 连接后允许交互 */
+}
+
+.instant-settings.visible:hover {
+    opacity: 1; /* 鼠标悬停时完全显示 */
+}
+
+.instant-panel {
+    background: rgba(30, 30, 30, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    min-width: 250px;
+}
+
+.instant-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 14px;
+}
+
+.instant-item:last-child {
+    margin-bottom: 0;
+}
+
+.instant-item label {
+    font-weight: 500;
+    min-width: 60px;
+}
+
+.instant-item select {
+    background: rgba(50, 50, 50, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #fff;
+    font-size: 13px;
+    min-width: 120px;
+}
+
+/* 开关容器 */
+.switch-container {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+/* 开关样式 */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.4s;
+    border-radius: 34px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #4caf50;
+}
+
+input:checked + .slider:before {
+    transform: translateX(20px);
+}

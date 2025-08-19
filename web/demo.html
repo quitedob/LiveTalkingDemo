@@ -4,384 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>智能语音助手控制面板</title>
-    <script src="client.js"></script>
+    <!-- 引入外部CSS样式文件 -->
+    <link rel="stylesheet" href="demo.css">
+    <!-- 引入FontAwesome图标库 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-        }
-        
-        body {
-            background-color: #000;
-            color: #fff;
-            height: 100vh;
-            overflow: hidden;
-            position: relative;
-        }
-
-        #screen {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, #0f0f0f 0%, #000 100%);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 1;
-        }
-        
-        .status {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.7);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background-color: #4caf50;
-        }
-        
-        .welcome-text {
-            font-size: 2.5rem;
-            font-weight: 300;
-            text-align: center;
-            margin-bottom: 2rem;
-            max-width: 80%;
-            color: rgba(255, 255, 255, 0.9);
-            line-height: 1.4;
-        }
-        
-        .welcome-text span {
-            color: #4caf50;
-            font-weight: 600;
-        }
-        
-        #toolbar-container {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 80px;
-            display: flex;
-            justify-content: center;
-            align-items: flex-end;
-            z-index: 10;
-            transition: all 0.3s ease;
-            opacity: 0;
-            transform: translateY(100%);
-        }
-        
-        body:hover #toolbar-container {
-            opacity: 1;
-            transform: translateY(0);
-        }
-        
-        #toolbar {
-            background: rgba(30, 30, 30, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 20px 20px 0 0;
-            height: 70px;
-            width: 80%;
-            max-width: 600px;
-            display: flex;
-            justify-content: space-around;
-            align-items: center;
-            padding: 0 20px;
-            box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .tool-btn {
-            background: rgba(50, 50, 50, 0.7);
-            border: none;
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            color: #fff;
-            font-size: 20px;
-        }
-        
-        .tool-btn:hover {
-            background: rgba(76, 175, 80, 0.8);
-            transform: translateY(-5px);
-            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
-        }
-        
-        .tool-btn.active {
-            background: #4caf50;
-            transform: translateY(-5px);
-            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
-        }
-
-        #settings-panel {
-            position: absolute;
-            top: 0;
-            right: -400px;
-            width: 380px;
-            height: 100%;
-            background: rgba(25, 25, 25, 0.95);
-            backdrop-filter: blur(10px);
-            border-left: 1px solid rgba(255, 255, 255, 0.1);
-            z-index: 100;
-            transition: right 0.4s cubic-bezier(0.23, 1, 0.32, 1);
-            padding: 20px;
-            overflow-y: auto;
-            box-shadow: -5px 0 25px rgba(0, 0, 0, 0.5);
-        }
-        
-        #settings-panel.active {
-            right: 0;
-        }
-        
-        .panel-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .panel-header h2 {
-            font-weight: 400;
-            font-size: 1.8rem;
-            color: #4caf50;
-        }
-        
-        .close-btn {
-            background: transparent;
-            border: none;
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 24px;
-            cursor: pointer;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            transition: all 0.3s ease;
-        }
-        
-        .close-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
-        }
-        
-        .settings-section {
-            margin-bottom: 30px;
-            background: rgba(40, 40, 40, 0.6);
-            border-radius: 12px;
-            padding: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-        
-        .section-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        
-        .section-header h3 {
-            font-weight: 500;
-            font-size: 1.3rem;
-            color: #fff;
-        }
-        
-        .section-actions {
-            display: flex;
-            gap: 8px;
-        }
-        
-        .action-btn {
-            background: rgba(76, 175, 80, 0.2);
-            border: 1px solid rgba(76, 175, 80, 0.3);
-            color: #4caf50;
-            border-radius: 5px;
-            padding: 6px 12px;
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .action-btn:hover {
-            background: rgba(76, 175, 80, 0.3);
-        }
-        
-        .settings-content {
-            padding: 10px 0;
-        }
-        
-        .settings-item {
-            padding: 12px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .settings-item:last-child {
-            border-bottom: none;
-        }
-        
-        .settings-item label {
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 1rem;
-        }
-        
-        select, textarea {
-            background: rgba(30, 30, 30, 0.7);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            padding: 8px 12px;
-            color: #fff;
-            width: 100%;
-            margin-top: 5px;
-        }
-        
-        textarea {
-            height: 100px;
-            resize: vertical;
-        }
-        
-        .side-text {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 1.2rem;
-            font-style: italic;
-            max-width: 300px;
-            line-height: 1.6;
-            transition: all 0.5s ease;
-            opacity: 0;
-            pointer-events: none;
-            z-index: 5;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 15px;
-            border-radius: 10px;
-            backdrop-filter: blur(5px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            max-height: 200px;
-            overflow-y: auto;
-        }
-        
-        #left-text {
-            left: 5%;
-            text-align: left;
-            color: #4caf50; /* AI回复 - 绿色 */
-        }
-        
-        #right-text {
-            right: 5%;
-            text-align: right;
-            color: #ffc107; /* 用户输入 - 黄色 */
-        }
-        
-        .side-text.visible {
-            opacity: 1;
-        }
-        
-        .mic-animation {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 200px;
-            height: 200px;
-            border-radius: 50%;
-            background: rgba(76, 175, 80, 0.1);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 2;
-            animation: pulse 2s infinite;
-        }
-        
-        .mic-animation.active {
-            display: flex;
-        }
-        
-        .mic-animation i {
-            font-size: 60px;
-            color: rgba(76, 175, 80, 0.8);
-        }
-        
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
-            }
-            70% {
-                box-shadow: 0 0 0 30px rgba(76, 175, 80, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
-            }
-        }
-        
-        .notification {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(30, 30, 30, 0.9);
-            border: 1px solid rgba(76, 175, 80, 0.5);
-            border-radius: 8px;
-            padding: 12px 25px;
-            color: #fff;
-            font-size: 0.9rem;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-            z-index: 200;
-        }
-        
-        .notification.show {
-            opacity: 1;
-        }
-        
-        /* WebRTC 连接状态样式 */
-        .connection-status {
-            position: absolute;
-            top: 60px;
-            left: 20px;
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.6);
-            background: rgba(30, 30, 30, 0.8);
-            padding: 8px 12px;
-            border-radius: 5px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        /* 隐藏元素 */
-        .hidden {
-            display: none !important;
-        }
-    </style>
+    <!-- 引入WebRTC客户端脚本 -->
+    <script src="client.js"></script>
 </head>
 <body>
     <!-- WebRTC 隐藏元素 -->
     <input id="use-stun" type="checkbox" style="display: none;" checked>
     <input type="hidden" id="sessionid">
     <audio id="audio" autoplay></audio>
-    <video id="video" autoplay playsinline style="display: none;"></video>
+    <video id="video" autoplay playsinline></video>
 
     <div id="screen">
         <div class="status">
@@ -402,11 +37,38 @@
         </div>
         
         <div class="side-text" id="left-text">
-            <div id="ai-subtitle">AI回复将在这里显示...</div>
+            <div class="subtitle-bubble" id="ai-subtitle">AI回复将在这里显示...</div>
         </div>
         
         <div class="side-text" id="right-text">
-            <div id="user-subtitle">用户语音识别结果将在这里显示...</div>
+            <div class="subtitle-bubble" id="user-subtitle">用户语音识别结果将在这里显示...</div>
+        </div>
+        
+        <!-- 新增：即时语音交互设置 -->
+        <div class="instant-settings" id="instant-settings">
+            <div class="instant-panel">
+                <div class="instant-item">
+                    <label>RAG模式</label>
+                    <div class="switch-container">
+                        <label class="switch">
+                            <input type="checkbox" id="instant-rag-switch">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="instant-item">
+                    <label for="instant-kb-select">知识库</label>
+                    <select id="instant-kb-select">
+                        <option value="">无</option>
+                    </select>
+                </div>
+                <div class="instant-item">
+                    <label for="instant-voice-select">音色</label>
+                    <select id="instant-voice-select">
+                        <option value="">默认音色</option>
+                    </select>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -421,7 +83,7 @@
             <button class="tool-btn" id="settings-btn">
                 <i class="fas fa-cog"></i>
             </button>
-            <button class="tool-btn" id="text-btn">
+            <button class="tool-btn" id="toggle-subtitle-btn">
                 <i class="fas fa-font"></i>
             </button>
             <button class="tool-btn" id="book-btn">
@@ -475,47 +137,63 @@
         
         <div class="settings-section">
             <div class="section-header">
-                <h3>声音克隆设置</h3>
+                <h3>FishTTS声音克隆</h3>
                 <div class="section-actions">
-                    <button class="action-btn">增加</button>
-                    <button class="action-btn">删除</button>
-                    <button class="action-btn">选择</button>
+                    <button class="action-btn" id="upload-voice-btn">上传</button>
+                    <button class="action-btn" id="delete-voice-btn">删除</button>
+                    <button class="action-btn" id="refresh-voice-btn">刷新</button>
                 </div>
             </div>
             <div class="settings-content">
                 <div class="settings-item">
-                    <label for="voice-select">选择克隆声音</label>
+                    <label for="voice-name-input">新音源名称</label>
+                    <input type="text" id="voice-name-input" placeholder="3-20位英文/数字">
                 </div>
-                <select id="voice-select">
-                    <option>专业男声 (默认)</option>
-                    <option>温和女声</option>
-                    <option>磁性男声</option>
-                    <option>活力女声</option>
-                    <option>自定义声音1</option>
-                </select>
+                <div class="settings-item">
+                    <label for="voice-file-input">音频文件</label>
+                    <input type="file" id="voice-file-input" accept="audio/*">
+                </div>
+                <div class="settings-item">
+                    <label for="voice-list-select">可用音源</label>
+                    <select id="voice-list-select">
+                        <option value="">默认音色</option>
+                    </select>
+                </div>
+                <div id="voice-status" style="font-size: 12px; color: #666; margin-top: 10px;">加载中...</div>
             </div>
         </div>
         
         <div class="settings-section">
             <div class="section-header">
-                <h3>数字人选择</h3>
+                <h3>数字人管理</h3>
                 <div class="section-actions">
-                    <button class="action-btn">增加</button>
-                    <button class="action-btn">删除</button>
-                    <button class="action-btn">选择</button>
+                    <button class="action-btn" id="create-avatar-btn">创建</button>
+                    <button class="action-btn" id="switch-avatar-btn">切换</button>
+                    <button class="action-btn" id="delete-avatar-btn">删除</button>
                 </div>
             </div>
             <div class="settings-content">
                 <div class="settings-item">
-                    <label for="avatar-select">选择数字人形象</label>
+                    <label for="avatar-select">当前数字人</label>
+                    <select id="avatar-select">
+                        <option value="">选择数字人</option>
+                    </select>
                 </div>
-                <select id="avatar-select">
-                    <option>商务男性 (默认)</option>
-                    <option>职业女性</option>
-                    <option>科技感形象</option>
-                    <option>卡通形象</option>
-                    <option>自定义形象1</option>
+                <div class="settings-item">
+                    <label for="avatar-file-input">数字人素材</label>
+                    <input type="file" id="avatar-file-input" accept="image/*,video/*,.zip">
+                </div>
+                <div class="settings-item">
+                    <label for="avatar-id-input">数字人ID（可选）</label>
+                    <input type="text" id="avatar-id-input" placeholder="如：xiaoli0001">
+                </div>
+                <div class="settings-item">
+                    <label for="avatar-delete-select">删除数字人</label>
+                    <select id="avatar-delete-select">
+                        <option value="">选择要删除的数字人</option>
                 </select>
+                </div>
+                <div id="avatar-status" style="font-size: 12px; color: #666; margin-top: 10px;">加载中...</div>
             </div>
         </div>
         
@@ -548,716 +226,8 @@
         <div id="asr-text"></div>
     </div>
 
-    <script>
-        // 获取DOM元素
-        const settingsBtn = document.getElementById('settings-btn');
-        const closePanelBtn = document.getElementById('close-panel');
-        const settingsPanel = document.getElementById('settings-panel');
-        const textBtn = document.getElementById('text-btn');
-        const leftText = document.getElementById('left-text');
-        const rightText = document.getElementById('right-text');
-        const micBtn = document.getElementById('mic-btn');
-        const micAnimation = document.getElementById('mic-animation');
-        const startBtn = document.getElementById('start-btn');
-        const bookBtn = document.getElementById('book-btn');
-        const notification = document.getElementById('notification');
-        
-        // WebRTC和ASR相关元素
-        const sessionIdInput = document.getElementById('sessionid');
-        const audio = document.getElementById('audio');
-        const video = document.getElementById('video');
-        const statusDot = document.getElementById('status-dot');
-        const statusText = document.getElementById('status-text');
-        const connectionStatus = document.getElementById('connection-status');
-        const asrResult = document.getElementById('asr-result');
-        const asrText = document.getElementById('asr-text');
-        const aiSubtitle = document.getElementById('ai-subtitle');
-        const userSubtitle = document.getElementById('user-subtitle');
-        
-        // 设置面板开关
-        settingsBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('设置按钮被点击');
-            
-            settingsPanel.classList.toggle('active');
-            settingsBtn.classList.toggle('active');
-            
-            // 如果打开设置面板，加载知识库列表
-            if (settingsPanel.classList.contains('active')) {
-                loadKnowledgeBases();
-            }
-        });
-        
-        // 关闭设置面板
-        closePanelBtn.addEventListener('click', () => {
-            settingsPanel.classList.remove('active');
-            settingsBtn.classList.remove('active');
-        });
-        
-        // 知识库管理按钮事件
-        document.getElementById('create-kb-btn').addEventListener('click', createKnowledgeBase);
-        document.getElementById('delete-kb-btn').addEventListener('click', deleteKnowledgeBase);
-        document.getElementById('switch-kb-btn').addEventListener('click', switchKnowledgeBase);
-        
-        // 知识库选择变化时自动切换
-        document.getElementById('kb-select').addEventListener('change', switchKnowledgeBase);
-        
-        // RAG提示词更新
-        document.getElementById('rag-prompt').addEventListener('blur', updateSystemPrompt);
-        
-        // 文本输入功能
-        textBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            console.log('文本按钮被点击');
-            
-            if (!state.isConnected || !state.sessionId) {
-                showNotification('请先点击开始按钮连接WebRTC');
-                return;
-            }
-            
-            // 弹出文本输入对话框
-            const userText = prompt('请输入要发送的文本:');
-            if (userText && userText.trim()) {
-                console.log('用户输入文本:', userText);
-                sendTextToAI(userText.trim());
-            }
-        });
-        
-        // 发送文本到AI
-        async function sendTextToAI(text) {
-            if (!state.sessionId) {
-                showNotification('请先建立WebRTC连接');
-                return;
-            }
-            
-            // 显示用户输入
-            showASRResult(text);
-            
-            // 先发送打断请求
-            await api.interruptTalk(state.sessionId).catch(e => console.error('打断请求失败:', e));
-            
-            const payload = {
-                sessionid: state.sessionId,
-                text: text,
-                interrupt: false,
-                use_rag: false,
-                kb_name: null,
-                type: 'chat',
-                tts_options: {}
-            };
-            
-            try {
-                const response = await api.sendHumanText(payload);
-                
-                // 处理流式响应
-                if (response.body) {
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-                    let buffer = '';
-                    let llmResponse = '';
-                    
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-                        
-                        buffer += decoder.decode(value, { stream: true });
-                        const lines = buffer.split('\n');
-                        buffer = lines.pop();
-                        
-                        for (const line of lines) {
-                            if (line.trim() === '') continue;
-                            try {
-                                const jsonData = JSON.parse(line);
-                                
-                                // 处理LLM流式响应
-                                if (jsonData.response) {
-                                    llmResponse += jsonData.response;
-                                    showAIResponse(llmResponse);
-                                }
-                                
-                                // 处理完整的LLM响应
-                                if (jsonData.llm_response) {
-                                    llmResponse = jsonData.llm_response;
-                                    showAIResponse(llmResponse);
-                                }
-                            } catch (e) {
-                                console.warn('无法解析的JSON行:', line);
-                            }
-                        }
-                    }
-                    
-                    // 处理剩余buffer
-                    if (buffer.trim() !== '') {
-                        try {
-                            const jsonData = JSON.parse(buffer);
-                            if (jsonData.response) {
-                                llmResponse += jsonData.response;
-                                showAIResponse(llmResponse);
-                            }
-                            if (jsonData.llm_response) {
-                                showAIResponse(jsonData.llm_response);
-                            }
-                        } catch (e) {
-                            console.warn('无法解析的JSON行 (buffer):', buffer);
-                        }
-                    }
-                }
-                
-                showNotification('文本处理完成');
-            } catch (e) {
-                showNotification('文本处理失败');
-                console.error('文本处理错误:', e);
-            }
-        }
-        
-        // 语音录制功能
-        async function startRecording() {
-            if (!state.sessionId) {
-                showNotification('请先连接WebRTC');
-                return;
-            }
-            
-            // 先发送打断请求
-            await api.interruptTalk(state.sessionId).catch(e => console.error("打断请求失败:", e));
+    <!-- 引入外部JavaScript文件 -->
+    <script src="demo.js"></script>
 
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                state.currentStream = stream; // 保存stream引用
-                state.mediaRecorder = new MediaRecorder(stream);
-                state.audioChunks = [];
-                
-                console.log('获取麦克风权限成功，开始录音');
-                
-                state.mediaRecorder.ondataavailable = e => {
-                    if (e.data.size > 0) {
-                        state.audioChunks.push(e.data);
-                        console.log('录音数据块大小:', e.data.size);
-                    }
-                };
-                
-                state.mediaRecorder.onstop = async () => {
-                    const audioBlob = new Blob(state.audioChunks, { type: 'audio/wav' });
-                    
-                    const formData = new FormData();
-                    formData.append('file', audioBlob, 'recording.wav');
-                    formData.append('sessionid', state.sessionId);
-                    formData.append('use_rag', 'false');
-                    formData.append('tts_options', JSON.stringify({}));
-                    
-                    try {
-                        const response = await api.sendHumanAudio(formData);
-                        
-                        // 处理流式响应
-                        if (response.body) {
-                            const reader = response.body.getReader();
-                            const decoder = new TextDecoder();
-                            let buffer = '';
-                            let asrResult = '';
-                            let llmResponse = '';
-                            
-                            while (true) {
-                                const { done, value } = await reader.read();
-                                if (done) break;
-                                
-                                buffer += decoder.decode(value, { stream: true });
-                                const lines = buffer.split('\n');
-                                buffer = lines.pop();
-                                
-                                for (const line of lines) {
-                                    if (line.trim() === '') continue;
-                                    try {
-                                        const jsonData = JSON.parse(line);
-                                        
-                                        // 处理ASR结果
-                                        if (jsonData.asr_result) {
-                                            asrResult = jsonData.asr_result;
-                                            showASRResult(asrResult);
-                                        }
-                                        
-                                        // 处理LLM流式响应
-                                        if (jsonData.response) {
-                                            llmResponse += jsonData.response;
-                                            showAIResponse(llmResponse);
-                                        }
-                                        
-                                        // 处理完整的LLM响应
-                                        if (jsonData.llm_response) {
-                                            llmResponse = jsonData.llm_response;
-                                            showAIResponse(llmResponse);
-                                        }
-                                    } catch (e) {
-                                        console.warn('无法解析的JSON行:', line);
-                                    }
-                                }
-                            }
-                            
-                            // 处理剩余buffer
-                            if (buffer.trim() !== '') {
-                                try {
-                                    const jsonData = JSON.parse(buffer);
-                                    if (jsonData.asr_result) {
-                                        showASRResult(jsonData.asr_result);
-                                    }
-                                    if (jsonData.response) {
-                                        llmResponse += jsonData.response;
-                                        showAIResponse(llmResponse);
-                                    }
-                                    if (jsonData.llm_response) {
-                                        showAIResponse(jsonData.llm_response);
-                                    }
-                                } catch (e) {
-                                    console.warn('无法解析的JSON行 (buffer):', buffer);
-                                }
-                            }
-                        }
-                        
-                        showNotification('语音处理完成');
-                    } catch (e) {
-                        showNotification('语音处理失败');
-                        console.error('语音处理错误:', e);
-                    } finally {
-                        // 清理音频流
-                        if (state.currentStream) {
-                            state.currentStream.getTracks().forEach(track => track.stop());
-                            state.currentStream = null;
-                        }
-                    }
-                };
-
-                state.mediaRecorder.start();
-                state.isRecording = true;
-
-            } catch (e) {
-                showNotification('无法访问麦克风');
-            }
-        }
-        
-        function stopRecording() {
-            if (state.mediaRecorder && state.isRecording) {
-                state.mediaRecorder.stop();
-                state.isRecording = false;
-                console.log('停止录音');
-                
-                // 清理音频流
-                if (state.currentStream) {
-                    state.currentStream.getTracks().forEach(track => track.stop());
-                    state.currentStream = null;
-                }
-            }
-        }
-        
-        // 麦克风按钮 - 修改为录音控制
-        micBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            console.log('麦克风按钮被点击，当前录音状态:', state.isRecording);
-            console.log('当前连接状态:', state.isConnected, '会话ID:', state.sessionId);
-            
-            if (!state.isConnected || !state.sessionId) {
-                showNotification('请先点击开始按钮连接WebRTC');
-                return;
-            }
-            
-            if (!state.isRecording) {
-                startRecording();
-                micBtn.classList.add('active');
-                micAnimation.classList.add('active');
-                showNotification('开始录音...');
-            } else {
-                stopRecording();
-                micBtn.classList.remove('active');
-                micAnimation.classList.remove('active');
-                showNotification('录音结束，处理中...');
-            }
-        });
-        
-        // WebRTC连接功能
-        function connectWebRTC() {
-            updateConnectionStatus('连接中...', '正在建立WebRTC连接');
-            
-            try {
-                window.start();
-                
-                // 设置WebRTC监听器
-                setTimeout(() => {
-                    setupWebRTCListeners();
-                }, 500);
-                
-                // 监听连接状态
-                const checkConnection = setInterval(() => {
-                    if (sessionIdInput.value && sessionIdInput.value !== "0") {
-                        clearInterval(checkConnection);
-                        state.sessionId = sessionIdInput.value;
-                        updateConnectionStatus('已连接', '语音助手已就绪');
-                        showNotification('WebRTC连接成功！');
-                        
-                        // 显示字幕区域
-                        leftText.classList.add('visible');
-                        rightText.classList.add('visible');
-                        
-                        // 开启心跳
-                        if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
-                        state.heartbeatInterval = setInterval(() => {
-                            if (state.sessionId) {
-                                api.sessionHeartbeat(state.sessionId).catch(e => console.error("心跳失败:", e));
-                            }
-                        }, 20000);
-                        
-                        console.log('WebRTC连接成功，会话ID:', state.sessionId);
-                    }
-                }, 500);
-                
-            } catch (e) {
-                updateConnectionStatus('连接失败', '无法建立WebRTC连接');
-                showNotification('WebRTC连接失败');
-                console.error('WebRTC连接错误:', e);
-            }
-        }
-        
-        function disconnectWebRTC() {
-            if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
-            state.heartbeatInterval = null;
-            
-            if (window.stop) window.stop();
-            state.sessionId = null;
-            sessionIdInput.value = '';
-            updateConnectionStatus('未连接', '语音助手已断开');
-            showNotification('WebRTC连接已断开');
-        }
-        
-        // 开始按钮 - 修改为WebRTC连接控制
-        startBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const isActive = startBtn.classList.contains('active');
-            console.log('开始按钮被点击，当前状态:', isActive ? '已连接' : '未连接');
-            
-            if (!isActive) {
-                // 开始连接
-                console.log('开始建立WebRTC连接');
-                connectWebRTC();
-                startBtn.classList.add('active');
-                startBtn.innerHTML = '<i class="fas fa-stop"></i>';
-                startBtn.title = '断开连接';
-            } else {
-                // 断开连接
-                console.log('断开WebRTC连接');
-                disconnectWebRTC();
-                startBtn.classList.remove('active');
-                startBtn.innerHTML = '<i class="fas fa-play"></i>';
-                startBtn.title = '开始连接';
-                
-                // 清空字幕
-                clearSubtitles();
-            }
-        });
-        
-        // 知识库管理功能
-        async function loadKnowledgeBases() {
-            try {
-                const data = await api.getKbList();
-                const kbSelect = document.getElementById('kb-select');
-                kbSelect.innerHTML = '<option value="">无</option>';
-                
-                if (data.knowledge_bases && data.knowledge_bases.length > 0) {
-                    data.knowledge_bases.forEach(kb => {
-                        const option = document.createElement('option');
-                        option.value = kb;
-                        option.textContent = kb;
-                        kbSelect.appendChild(option);
-                    });
-                }
-                
-                // 加载当前配置
-                const config = await api.getConfig();
-                if (config.current_kb) {
-                    kbSelect.value = config.current_kb;
-                }
-                document.getElementById('rag-prompt').value = config.system_prompt || '';
-                
-            } catch (e) {
-                console.error('加载知识库失败:', e);
-            }
-        }
-        
-        async function createKnowledgeBase() {
-            const kbName = document.getElementById('kb-name').value.trim();
-            const file = document.getElementById('kb-file').files[0];
-            
-            if (!kbName.match(/^[a-zA-Z0-9]{3,20}$/)) {
-                showNotification('知识库名称不合法 (3-20位英文/数字)');
-                return;
-            }
-            if (!file) {
-                showNotification('请选择要上传的文件');
-                return;
-            }
-            
-            const formData = new FormData();
-            formData.append('kb_name', kbName);
-            formData.append('file', file);
-            
-            try {
-                await api.createKb(formData);
-                showNotification('知识库创建成功');
-                document.getElementById('kb-name').value = '';
-                document.getElementById('kb-file').value = '';
-                await loadKnowledgeBases();
-            } catch (e) {
-                showNotification('知识库创建失败');
-            }
-        }
-        
-        async function deleteKnowledgeBase() {
-            const selectedKb = document.getElementById('kb-select').value;
-            if (!selectedKb) {
-                showNotification('请选择要删除的知识库');
-                return;
-            }
-            
-            if (confirm(`确定要删除知识库 "${selectedKb}" 吗？`)) {
-                try {
-                    await api.deleteKb(selectedKb);
-                    showNotification('知识库删除成功');
-                    await loadKnowledgeBases();
-                } catch (e) {
-                    showNotification('知识库删除失败');
-                }
-            }
-        }
-        
-        async function switchKnowledgeBase() {
-            const selectedKb = document.getElementById('kb-select').value;
-            try {
-                await api.switchKb(selectedKb);
-                showNotification(selectedKb ? `已切换到知识库: ${selectedKb}` : '已取消使用知识库');
-            } catch (e) {
-                showNotification('知识库切换失败');
-            }
-        }
-        
-        async function updateSystemPrompt() {
-            const prompt = document.getElementById('rag-prompt').value;
-            try {
-                await api.updatePrompt(prompt);
-                showNotification('提示词更新成功');
-            } catch (e) {
-                showNotification('提示词更新失败');
-            }
-        }
-        
-        // 书本按钮 - 跳转页面
-        bookBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            console.log('书本按钮被点击');
-            showNotification('正在跳转到webrtc1.html...');
-            
-            setTimeout(() => {
-                window.location.href = 'webrtc1.html';
-            }, 500);
-        });
-        
-        // 状态管理
-        let state = {
-            sessionId: null,
-            isRecording: false,
-            mediaRecorder: null,
-            audioChunks: [],
-            isConnected: false,
-            heartbeatInterval: null,
-            currentStream: null
-        };
-        
-        // 显示通知
-        function showNotification(message) {
-            notification.textContent = message;
-            notification.classList.add('show');
-            
-            setTimeout(() => {
-                notification.classList.remove('show');
-            }, 2000);
-        }
-        
-        // 更新连接状态
-        function updateConnectionStatus(status, message) {
-            connectionStatus.textContent = `WebRTC状态: ${status}`;
-            statusText.textContent = message;
-            
-            if (status === '已连接') {
-                statusDot.style.backgroundColor = '#4caf50';
-                state.isConnected = true;
-            } else {
-                statusDot.style.backgroundColor = '#f44336';
-                state.isConnected = false;
-            }
-        }
-        
-        // 显示ASR结果（用户输入 - 黄色）
-        function showASRResult(text) {
-            if (!text) return;
-            
-            asrText.textContent = text;
-            asrResult.style.opacity = '1';
-            userSubtitle.textContent = `用户: ${text}`;
-            rightText.classList.add('visible');
-            
-            console.log('显示ASR结果:', text);
-            
-            // 5秒后隐藏ASR结果框
-            setTimeout(() => {
-                asrResult.style.opacity = '0';
-            }, 5000);
-        }
-        
-        // 显示AI回复（LLM响应 - 绿色）
-        function showAIResponse(text) {
-            if (!text) return;
-            
-            aiSubtitle.textContent = `AI: ${text}`;
-            leftText.classList.add('visible');
-            
-            console.log('显示AI回复:', text);
-        }
-        
-        // 清空字幕
-        function clearSubtitles() {
-            aiSubtitle.textContent = 'AI回复将在这里显示...';
-            userSubtitle.textContent = '用户语音识别结果将在这里显示...';
-            leftText.classList.remove('visible');
-            rightText.classList.remove('visible');
-            asrResult.style.opacity = '0';
-        }
-        
-        // API调用函数
-        const api = {
-            async fetch(url, options = {}) {
-                try {
-                    const response = await fetch(url, options);
-                    if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({error: '未知错误'}));
-                        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-                    }
-                    return response;
-                } catch (error) {
-                    showNotification(`请求失败: ${error.message}`);
-                    console.error('API Error:', error);
-                    throw error;
-                }
-            },
-            
-            sendHumanAudio: (formData) => api.fetch('/audio_chat', { method: 'POST', body: formData }),
-            sendHumanText: (payload) => api.fetch('/human', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }),
-            interruptTalk: (sessionId) => api.fetch('/interrupt_talk', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ sessionid: sessionId }) }),
-            sessionHeartbeat: (sessionId) => api.fetch('/session/heartbeat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ sessionid: Number(sessionId) }) }),
-            
-            // 知识库管理API
-            getKbList: () => api.fetch('/kb/list').then(res => res.json()),
-            createKb: (formData) => api.fetch('/kb/create', { method: 'POST', body: formData }),
-            deleteKb: (name) => api.fetch(`/kb/delete/${name}`, { method: 'DELETE' }),
-            switchKb: (name) => api.fetch(`/kb/switch/${name}`, { method: 'POST' }),
-            getConfig: () => api.fetch('/config/get').then(res => res.json()),
-            updatePrompt: (prompt) => api.fetch('/config/prompt', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt}) })
-        };
-        
-        // WebRTC连接状态监听
-        function setupWebRTCListeners() {
-            if (typeof pc !== 'undefined' && pc) {
-                pc.addEventListener('connectionstatechange', () => {
-                    console.log(`WebRTC连接状态变更: ${pc.connectionState}`);
-                    updateConnectionStatus(pc.connectionState, `连接状态: ${pc.connectionState}`);
-                    
-                    switch (pc.connectionState) {
-                        case 'connected':
-                            updateConnectionStatus('已连接', '语音助手已就绪');
-                            break;
-                        case 'disconnected':
-                            updateConnectionStatus('连接断开', '正在尝试重连...');
-                            break;
-                        case 'failed':
-                            updateConnectionStatus('连接失败', '请重新连接');
-                            disconnectWebRTC();
-                            break;
-                    }
-                });
-                
-                pc.addEventListener('track', (evt) => {
-                    if (evt.track.kind == 'video') {
-                        video.srcObject = evt.streams[0];
-                    } else {
-                        audio.srcObject = evt.streams[0];
-                    }
-                });
-            }
-        }
-        
-        // 初始化检查
-        setTimeout(() => {
-            setupWebRTCListeners();
-        }, 1000);
-        
-        // 页面初始化
-        function initializePage() {
-            console.log('页面初始化开始');
-            
-            // 设置初始状态
-            updateConnectionStatus('未连接', '语音助手待机中');
-            clearSubtitles();
-            
-            // 设置按钮标题
-            startBtn.title = '开始连接';
-            micBtn.title = '语音录音';
-            settingsBtn.title = '系统设置';
-            textBtn.title = '文本输入';
-            bookBtn.title = '跳转到webrtc1.html';
-            
-            console.log('页面初始化完成');
-        }
-        
-        // 模拟加载
-        setTimeout(() => {
-            document.querySelector('.welcome-text').innerHTML = 
-                '系统初始化完成<br>点击播放按钮连接WebRTC<br>点击麦克风按钮开始语音交互';
-        }, 2000);
-        
-        // 页面加载完成后初始化
-        setTimeout(() => {
-            initializePage();
-        }, 3000);
-        
-        // 添加键盘快捷键支持
-        document.addEventListener('keydown', (e) => {
-            // 空格键：开始/停止录音
-            if (e.code === 'Space' && !e.repeat) {
-                e.preventDefault();
-                if (state.isConnected) {
-                    if (!state.isRecording) {
-                        micBtn.click();
-                    }
-                }
-            }
-            // Escape键：停止录音
-            if (e.code === 'Escape' && state.isRecording) {
-                micBtn.click();
-            }
-        });
-        
-        // 添加页面可见性检测
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden && state.isRecording) {
-                // 页面隐藏时停止录音
-                stopRecording();
-                micBtn.classList.remove('active');
-                micAnimation.classList.remove('active');
-                showNotification('页面隐藏，录音已停止');
-            }
-        });
-    </script>
 </body>
 </html>
