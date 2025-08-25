@@ -16,7 +16,7 @@ from aiortc.rtcrtpsender import RTCRtpSender
 from api.utils import build_nerfreal, randN
 from logger import logger
 from webrtc import HumanPlayer
-# 中文注释：引入会话管理器，统一登记/反登记，打通“热切换”接口与实际运行会话
+# 中文注释：引入会话管理器，统一登记/反登记，打通"热切换"接口与实际运行会话
 from pkg.avatars.session_manager import get_session_manager
 
 
@@ -42,7 +42,7 @@ def _ensure_runtime_buckets(app: web.Application):
 
 
 def _mark_deadline(app: web.Application, sessionid: int, seconds: int = GRACE_TTL_SECONDS):
-    """中文注释：记录会话的“存活截止时间”，用于宽限期内可重连。"""
+    """中文注释：记录会话的"存活截止时间"，用于宽限期内可重连。"""
     _ensure_runtime_buckets(app)
     app['disconnect_deadline'][sessionid] = time.time() + max(1, seconds)
 
@@ -152,20 +152,25 @@ async def _new_pc(app: web.Application, sessionid: int) -> RTCPeerConnection:
         state = pc.connectionState
         logger.info("连接状态变为: %s", state)
         if state == "connected":
-            # 一旦连上，清掉任何“断线清理”的倒计时
+            # 一旦连上，清掉任何"断线清理"的倒计时
             _clear_deadline(app, sessionid)
         elif state == "disconnected":
-            # 中文注释：断网/弱网/切网下常见，给宽限期，不要立即清理
-            logger.info("会话 %s 进入 disconnected，启动宽限计时 %ss", sessionid, GRACE_TTL_SECONDS)
-            await _schedule_disconnect_cleanup(app, sessionid)
+            # 关键架构修复：仅记录警告，不采取任何清理动作。依赖心跳机制来决定会话是否超时
+            logger.warning("会话 %s 进入 disconnected 状态，等待网络恢复或心跳超时（被动模式）", sessionid)
+            # 不再调用 _schedule_disconnect_cleanup - 这是根据法证分析的关键修复
+            # 原因：disconnected 状态是瞬时的，服务器应保持被动，允许连接自行恢复
         elif state in ("failed", "closed"):
             # 中文注释：失败或关闭状态：不立即清理，给更长的宽限期等待用户手动重连
             logger.info("会话 %s 进入 %s 状态，保留会话等待用户重连", sessionid, state)
             try:
                 if pc in pcs:
                     pcs.discard(pc)
-            except Exception:
-                pass
+                # 关键修复：确保所有ICE相关资源被正确清理，防止aioice STUN事务错误
+                if hasattr(pc, '_iceConnectionState') or hasattr(pc, '_sctp'):
+                    # 等待一个事件循环周期让所有异步操作完成
+                    await asyncio.sleep(0.1)
+            except Exception as e:
+                logger.debug(f"清理PC连接时的非关键错误: {e}")
             # 给用户更多时间手动重连，而不是立即清理
             await _schedule_disconnect_cleanup(app, sessionid)
 
@@ -265,11 +270,15 @@ async def reconnect(request: web.Request) -> web.Response:
     old_pc: Optional[RTCPeerConnection] = app['session_pcs'].pop(sessionid, None)
     if old_pc:
         try:
+            # 先从app['pcs']中移除，防止其他地方访问
+            if old_pc in app['pcs']:
+                app['pcs'].discard(old_pc)
+            # 等待一个短暂的时间让ICE事务完成或取消
+            await asyncio.sleep(0.1)
+            # 然后关闭连接
             await old_pc.close()
-        except Exception:
-            pass
-        if old_pc in app['pcs']:
-            app['pcs'].discard(old_pc)
+        except Exception as e:
+            logger.debug(f"关闭旧PC连接时的非关键错误: {e}")
 
     # 新建 PC，挂轨
     pc = await _new_pc(app, sessionid)
@@ -386,9 +395,13 @@ async def close_session(request: web.Request) -> web.Response:
         session_pc = app['session_pcs'].pop(sessionid, None)
         if session_pc:
             try:
+                # 先从app['pcs']中移除，防止其他地方访问
                 if session_pc in pcs:
-                    await session_pc.close()
                     pcs.discard(session_pc)
+                # 等待一个短暂的时间让ICE事务完成或取消
+                await asyncio.sleep(0.1)
+                # 然后关闭连接
+                await session_pc.close()
             except Exception as e:
                 logger.warning(f"关闭PC连接时出错: {e}")
         

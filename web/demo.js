@@ -503,6 +503,12 @@ micBtn.addEventListener('click', (e) => {
 function connectWebRTC() {
     updateConnectionStatus('连接中...', '正在建立WebRTC连接');
     
+    // 显示加载指示器
+    const connectionLoading = document.getElementById('connection-loading');
+    const loadingText = document.getElementById('loading-text');
+    connectionLoading.classList.add('show');
+    loadingText.innerHTML = '正在建立WebRTC连接<span class="loading-dots"><span></span><span></span><span></span></span>';
+    
     try {
         window.start();
         
@@ -511,16 +517,16 @@ function connectWebRTC() {
             setupWebRTCListeners();
         }, 500);
         
-        // 优化连接状态监听，减少频繁检查
-        let connectionCheckAttempts = 0;
-        const maxConnectionCheckAttempts = 60; // 最多检查60次（30秒）
+        // 优化连接状态监听，移除超时机制，改为持续监听模式
         
         const checkConnection = setInterval(() => {
-            connectionCheckAttempts++;
-            
             if (sessionIdInput.value && sessionIdInput.value !== "0") {
                 clearInterval(checkConnection);
                 state.sessionId = sessionIdInput.value;
+                
+                // 隐藏加载指示器
+                connectionLoading.classList.remove('show');
+                
                 updateConnectionStatus('已连接', '语音助手已就绪');
                 showNotification('WebRTC连接成功！');
                 
@@ -544,24 +550,14 @@ function connectWebRTC() {
                 }, 5000); // 连接成功5秒后再启动心跳
                 
                 console.log('WebRTC连接成功，会话ID:', state.sessionId);
-                
-            } else if (connectionCheckAttempts >= maxConnectionCheckAttempts) {
-                // 连接超时处理
-                clearInterval(checkConnection);
-                console.error('WebRTC连接超时');
-                updateConnectionStatus('连接超时', '请重试连接');
-                showNotification('连接超时，请重试');
-                
-                // 重置按钮状态
-                const startBtn = document.getElementById('start-btn');
-                if (startBtn) {
-                    startBtn.innerHTML = '<i class="fas fa-play"></i>';
-                    startBtn.disabled = false;
-                }
             }
-        }, 500); // 保持500ms检查间隔，但增加超时机制
+            // 移除超时检查：不再设置超时限制，让用户手动控制连接
+        }, 500); // 保持500ms检查间隔
         
     } catch (e) {
+        // 隐藏加载指示器
+        connectionLoading.classList.remove('show');
+        
         updateConnectionStatus('连接失败', '无法建立WebRTC连接');
         showNotification('WebRTC连接失败');
         console.error('WebRTC连接错误:', e);
@@ -574,6 +570,10 @@ function disconnectWebRTC() {
     if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
     state.heartbeatInterval = null;
     state.isReconnecting = false;
+    
+    // 隐藏加载指示器
+    const connectionLoading = document.getElementById('connection-loading');
+    connectionLoading.classList.remove('show');
     
     if (window.stop) window.stop();
     state.sessionId = null;

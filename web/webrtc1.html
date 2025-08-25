@@ -128,6 +128,58 @@
         .toast.show { opacity: 1; transform: translateY(0); }
         .toast.success { background-color: var(--success-color); }
         .toast.error { background-color: var(--error-color); }
+        
+        /* Loading spinner styles */
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border-color);
+            border-top: 2px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .connection-progress {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            color: var(--subtle-text);
+            font-size: 13px;
+        }
+        
+        .connection-dots {
+            display: inline-flex;
+            gap: 2px;
+        }
+        
+        .connection-dots span {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            animation: pulse 1.4s ease-in-out infinite both;
+        }
+        
+        .connection-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .connection-dots span:nth-child(2) { animation-delay: -0.16s; }
+        .connection-dots span:nth-child(3) { animation-delay: 0s; }
+        
+        @keyframes pulse {
+            0%, 80%, 100% {
+                transform: scale(0);
+                opacity: 0.5;
+            }
+            40% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
     </style>
 </head>
 <body>
@@ -146,6 +198,14 @@
                 <button id="start" class="btn-primary">开始连接</button>
                 <button id="stop" class="btn-danger" style="display: none;">断开连接</button>
                 <button id="reconnect" class="btn-secondary" style="display: none;">手动重连</button>
+            </div>
+            
+            <!-- Loading indicator and connection status -->
+            <div id="connection-status" class="status-bar" style="display: none; text-align: center; margin-top: 10px;">
+                <div id="loading-spinner" style="display: inline-block; margin-right: 8px;">
+                    <div class="spinner"></div>
+                </div>
+                <span id="connection-message">正在建立WebRTC连接，请稍候...</span>
             </div>
 
             <h3>文本/语音对话</h3>
@@ -927,6 +987,13 @@
         function connect() {
             dom.startConnBtn.disabled = true;
             dom.startConnBtn.textContent = '连接中...';
+            
+            // 显示加载指示器
+            const connectionStatus = document.getElementById('connection-status');
+            const connectionMessage = document.getElementById('connection-message');
+            connectionStatus.style.display = 'block';
+            connectionMessage.textContent = '正在建立WebRTC连接，请稍候...';
+            
             window.start();
 
             // ★★★ 新增: 监听连接状态变化 ★★★
@@ -934,48 +1001,41 @@
                 pc.addEventListener('connectionstatechange', handleConnectionStateChange);
             }
 
-            // 使用更长的轮询间隔，避免过于频繁的检查
-            let connectionCheckAttempts = 0;
-            const maxConnectionCheckAttempts = 60; // 最多检查60次（30秒）
+            // 使用连续监听模式，移除超时限制
             
             const interval = setInterval(() => {
-                connectionCheckAttempts++;
-                
                 if (dom.sessionIdInput.value && dom.sessionIdInput.value !== "0") {
                     clearInterval(interval);
                     state.sessionId = dom.sessionIdInput.value;
+                    
+                    // 隐藏加载指示器
+                    connectionStatus.style.display = 'none';
+                    
                     showToast('WebRTC连接成功！');
                     dom.startConnBtn.style.display = 'none';
                     dom.stopConnBtn.style.display = 'block';
                     console.log(`WebRTC连接建立成功，会话ID: ${state.sessionId}`);
 
-                    // 开启心跳，但延迟启动
+                    // 延迟启动心跳，给连接更多时间稳定
                     setTimeout(() => {
-                        if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
-                        state.heartbeatInterval = setInterval(() => {
-                            if (state.sessionId) {
-                                api.sessionHeartbeat(state.sessionId).catch(e => console.warn("心跳失败:", e));
-                            }
-                        }, 30000); // 30秒心跳间隔
-                        console.log('心跳监控已启动');
-                    }, 5000); // 连接成功5秒后再启动心跳
-                    
-                } else if (connectionCheckAttempts >= maxConnectionCheckAttempts) {
-                    // 超时处理
-                    clearInterval(interval);
-                    console.error('WebRTC连接超时');
-                    showToast('连接超时，请重试', 'error');
-                    dom.startConnBtn.disabled = false;
-                    dom.startConnBtn.textContent = '开始连接';
+                        if (state.sessionId && pc && pc.connectionState === 'connected') {
+                            startHeartbeatMonitoring();
+                            console.log('初始连接心跳监控已启动');
+                        }
+                    }, 10000); // 连接成功10秒后再启动心跳
                 }
-            }, 500); // 保持500ms检查间隔，但增加超时机制
+                // 移除超时检查：让用户手动控制连接
+            }, 500); // 保持500ms检查间隔
         }
 
         function disconnect() {
             // ★★★ 新增: 停止心跳和重连 ★★★
-            if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
-            state.heartbeatInterval = null;
+            stopHeartbeatMonitoring();
             state.isReconnecting = false;
+
+            // 隐藏加载指示器
+            const connectionStatus = document.getElementById('connection-status');
+            connectionStatus.style.display = 'none';
 
             if (window.stop) window.stop();
             state.sessionId = null;
@@ -999,12 +1059,12 @@
             dom.reconnectBtn.textContent = '重连中...';
             
             try {
-                const success = await tryReconnect();
+                const success = await tryICERestart();
                 if (success) {
                     showToast('重连成功', 'success');
                     dom.reconnectBtn.style.display = 'none';
                 } else {
-                    showToast('重连失败，请棄网络后再试', 'error');
+                    showToast('重连失败，请检查网络后再试', 'error');
                 }
             } catch (error) {
                 console.error('手动重连失败:', error);
@@ -1119,37 +1179,120 @@
                         showToast('WebRTC连接成功', 'success');
                     }
                     dom.reconnectBtn.style.display = 'none';
-                    // 清除心跳监控的倒计时
-                    if (state.heartbeatInterval) {
-                        clearInterval(state.heartbeatInterval);
-                    }
-                    // 启动心跳监控
-                    state.heartbeatInterval = setInterval(() => {
-                        if (state.sessionId) {
-                            api.sessionHeartbeat(state.sessionId).catch(e => console.error("心跳失败:", e));
-                        }
-                    }, 20000); // 每20秒发送一次心跳
+                    // 停止任何重连尝试
+                    state.isReconnecting = false;
+                    // 启动或重启心跳监控
+                    startHeartbeatMonitoring();
                     break;
                 case 'disconnected':
-                    console.log('WebRTC连接断开，等待用户重连或系统自然恢复...');
+                    // 关键修复：被动等待，继续发送心跳保持服务器会话存活
+                    console.log('WebRTC连接断开，等待网络恢复或用户重连...');
                     showToast('连接断开，系统保留会话5分钟，可点击重连按钮', 'warning');
                     dom.reconnectBtn.style.display = 'block';
-                    // 不自动重连，等待用户手动操作或系统自然恢复
+                    // 关键：不停止心跳，继续发送以保持服务器会话存活
+                    // 这是与新的服务器被动策略协同工作的关键
+                    console.log('保持心跳监控以维持服务器会话存活');
                     break;
                 case 'failed':
-                    console.log('WebRTC连接失败');
-                    showToast('WebRTC连接失败，请点击重连按钮或检查网络', 'error');
+                    // ICE 重启恢复机制 - 按照 WebRTC 标准实现
+                    console.log('WebRTC连接失败，尝试 ICE Restart 恢复...');
+                    showToast('WebRTC连接失败，正在尝试自动恢复...', 'error');
                     dom.reconnectBtn.style.display = 'block';
-                    // 不自动断开，等待用户手动操作
+                    // 停止心跳监控，在恢复成功后重新启动
+                    stopHeartbeatMonitoring();
+                    // 尝试 ICE Restart 恢复
+                    tryICERestart();
                     break;
                 case 'closed':
                     console.log('WebRTC连接已关闭');
                     dom.reconnectBtn.style.display = 'none';
-                    if (state.heartbeatInterval) {
-                        clearInterval(state.heartbeatInterval);
-                        state.heartbeatInterval = null;
-                    }
+                    stopHeartbeatMonitoring();
                     break;
+            }
+        }
+        
+        // ★★★ ICE Restart 恢复机制 - WebRTC 标准实现 ★★★
+        async function tryICERestart() {
+            if (!pc || !state.sessionId || state.isReconnecting) {
+                console.log('无法进行 ICE Restart：缺少 PC 实例、会话 ID 或正在重连中');
+                return false;
+            }
+            
+            state.isReconnecting = true;
+            console.log('开始 ICE Restart 恢复尝试...');
+            
+            try {
+                // 创建带 iceRestart 的 offer
+                const offer = await pc.createOffer({ iceRestart: true });
+                await pc.setLocalDescription(offer);
+                
+                console.log('ICE Restart offer 已创建，发送到服务器...');
+                
+                // 使用重连 API
+                const response = await api.reconnect({
+                    sessionid: Number(state.sessionId),
+                    sdp: offer.sdp,
+                    type: offer.type
+                });
+                
+                const answer = await response.json();
+                await pc.setRemoteDescription({ type: answer.type, sdp: answer.sdp });
+                
+                console.log('ICE Restart offer/answer 交换完成，等待连接恢复...');
+                showToast('ICE Restart 成功，等待连接恢复...', 'info');
+                
+                return true;
+                
+            } catch (error) {
+                console.error('ICE Restart 失败:', error);
+                showToast('ICE Restart 失败，请手动重连', 'error');
+                state.isReconnecting = false;
+                return false;
+            }
+        }
+        
+        // ★★★ 改进的心跳监控机制 ★★★
+        function startHeartbeatMonitoring() {
+            if (state.heartbeatInterval) {
+                clearInterval(state.heartbeatInterval);
+            }
+            
+            state.heartbeatFailures = 0;
+            console.log('启动心跳监控...');
+            
+            state.heartbeatInterval = setInterval(async () => {
+                if (!state.sessionId) {
+                    console.log('没有会话 ID，停止心跳监控');
+                    stopHeartbeatMonitoring();
+                    return;
+                }
+                
+                try {
+                    await api.sessionHeartbeat(state.sessionId);
+                    // 心跳成功，重置错误计数器
+                    if (state.heartbeatFailures > 0) {
+                        state.heartbeatFailures = 0;
+                        console.log('心跳恢复正常');
+                    }
+                } catch (error) {
+                    state.heartbeatFailures++;
+                    console.error(`心跳失败 (${state.heartbeatFailures}/3):`, error.message || error);
+                    
+                    // 连续 3 次心跳失败后停止监控
+                    if (state.heartbeatFailures >= 3) {
+                        console.warn('心跳连续失败，停止心跳监控');
+                        stopHeartbeatMonitoring();
+                        showToast('服务器连接中断，请手动重连', 'warning');
+                    }
+                }
+            }, 20000); // 每 20 秒发送一次心跳
+        }
+        
+        function stopHeartbeatMonitoring() {
+            if (state.heartbeatInterval) {
+                clearInterval(state.heartbeatInterval);
+                state.heartbeatInterval = null;
+                console.log('心跳监控已停止');
             }
         }
         
