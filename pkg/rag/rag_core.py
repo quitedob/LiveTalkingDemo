@@ -13,17 +13,17 @@ class RAGCore:
     RAG核心逻辑类，负责管理RAG状态、构建提示词。
     """
 
-    def __init__(self, llm_client):
+    def __init__(self, llm_manager):
         """
         初始化RAG核心。
-        :param llm_client: 一个LLMClient的实例。
+        :param llm_manager: 一个LLMManager的实例。
         """
-        self.llm_client = llm_client # 注入共享的LLM客户端
+        self.llm_manager = llm_manager # 注入共享的LLM管理器
         self.use_rag = DEFAULT_RAG_MODE
         self.current_kb_name: Optional[str] = None
         self.kb_instance: Optional[KnowledgeBase] = None
         self.system_prompt = self._load_system_prompt()
-        logger.info("RAG核心初始化完成，并已连接到共享LLM客户端。")
+        logger.info("RAG核心初始化完成，并已连接到共享LLM管理器。")
 
     def _load_system_prompt(self) -> str:
         """从文件加载动态提示词，如果文件不存在则创建默认值。"""
@@ -46,6 +46,8 @@ class RAGCore:
             with open(DYNAMIC_PROMPT_FILE, 'w', encoding='utf-8') as f:
                 f.write(new_prompt)
             self.system_prompt = new_prompt
+            # 同时更新LLM管理器中所有客户端的系统提示词
+            self.llm_manager.update_system_prompt(new_prompt)
             logger.info(f"系统提示词已更新为: '{new_prompt[:50]}...'")
             return True
         except Exception as e:
@@ -156,21 +158,32 @@ class RAGCore:
         context = ""
         # 1. 如果RAG模式开启且已选择知识库实例，则进行检索
         if self.use_rag and self.kb_instance:
-            # KnowledgeBase 的 search 方法现在是同步的，但在一个IO密集型应用中，
-            # 将CPU密集型或潜在阻塞的操作（如模型推理）放入线程池是最佳实践。
-            loop = asyncio.get_event_loop()
-            query_result = await loop.run_in_executor(
-                None,
-                self.kb_instance.search,
-                user_query
-            )
-            
-            if query_result and query_result.hits:
-                context = "\n\n---\n\n".join([hit.text for hit in query_result.hits])
+            try:
+                # 添加超时控制，防止检索操作阻塞过久
+                loop = asyncio.get_event_loop()
+                query_result = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        self.kb_instance.search,
+                        user_query
+                    ),
+                    timeout=10.0  # 10秒超时
+                )
+                
+                if query_result and query_result.hits:
+                    context = "\n\n---\n\n".join([hit.text for hit in query_result.hits])
+                    logger.debug(f"RAG检索到 {len(query_result.hits)} 个相关片段")
+                    
+            except asyncio.TimeoutError:
+                logger.warning(f"RAG检索超时，将使用普通模式回答: {user_query[:50]}...")
+                # 超时时回退到普通模式
+            except Exception as e:
+                logger.error(f"RAG检索失败: {e}，将使用普通模式回答")
+                # 检索失败时回退到普通模式
 
         # 2. 构建最终的提示词和可选的系统提示词覆盖
         final_query, system_prompt_override = self._build_prompt(user_query, context)
 
-        # 3. 使用共享的LLM客户端进行流式调用
-        async for chunk in self.llm_client.ask(final_query, system_prompt_override=system_prompt_override):
+        # 3. 使用共享的LLM管理器进行流式调用
+        async for chunk in self.llm_manager.ask(final_query, system_prompt_override=system_prompt_override):
             yield chunk

@@ -93,6 +93,13 @@ const avatarIdInput = document.getElementById('avatar-id-input');
 const avatarDeleteSelect = document.getElementById('avatar-delete-select');
 const avatarStatus = document.getElementById('avatar-status');
 
+// 新增：LLM管理相关元素
+const switchLlmBtn = document.getElementById('switch-llm-btn');
+const testLlmBtn = document.getElementById('test-llm-btn');
+const refreshLlmBtn = document.getElementById('refresh-llm-btn');
+const llmProviderSelect = document.getElementById('llm-provider-select');
+const llmStatus = document.getElementById('llm-status');
+
 // 状态管理对象
 let state = {
     sessionId: null,
@@ -106,7 +113,11 @@ let state = {
     reconnectAttempts: 0,
     maxReconnectAttempts: 5,
     isReconnecting: false,
-    subtitlesVisible: true // 新增：字幕显示状态
+    subtitlesVisible: true, // 新增：字幕显示状态
+    // 新增：心跳相关状态
+    lastHeartbeat: null,
+    heartbeatFailures: 0,
+    maxHeartbeatFailures: 3
 };
 
 
@@ -500,8 +511,13 @@ function connectWebRTC() {
             setupWebRTCListeners();
         }, 500);
         
-        // 监听连接状态
+        // 优化连接状态监听，减少频繁检查
+        let connectionCheckAttempts = 0;
+        const maxConnectionCheckAttempts = 60; // 最多检查60次（30秒）
+        
         const checkConnection = setInterval(() => {
+            connectionCheckAttempts++;
+            
             if (sessionIdInput.value && sessionIdInput.value !== "0") {
                 clearInterval(checkConnection);
                 state.sessionId = sessionIdInput.value;
@@ -516,17 +532,34 @@ function connectWebRTC() {
                 rightText.classList.add('visible');
                 instantSettings.classList.add('visible');
                 
-                // 开启心跳
-                if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
-                state.heartbeatInterval = setInterval(() => {
-                    if (state.sessionId) {
-                        api.sessionHeartbeat(state.sessionId).catch(e => console.error("心跳失败:", e));
-                    }
-                }, 20000);
+                // 延迟启动心跳，避免连接刚建立就发送心跳
+                setTimeout(() => {
+                    if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
+                    state.heartbeatInterval = setInterval(() => {
+                        if (state.sessionId) {
+                            api.sessionHeartbeat(state.sessionId).catch(e => console.warn("心跳失败:", e));
+                        }
+                    }, 30000); // 30秒心跳间隔
+                    console.log('心跳监控已启动');
+                }, 5000); // 连接成功5秒后再启动心跳
                 
                 console.log('WebRTC连接成功，会话ID:', state.sessionId);
+                
+            } else if (connectionCheckAttempts >= maxConnectionCheckAttempts) {
+                // 连接超时处理
+                clearInterval(checkConnection);
+                console.error('WebRTC连接超时');
+                updateConnectionStatus('连接超时', '请重试连接');
+                showNotification('连接超时，请重试');
+                
+                // 重置按钮状态
+                const startBtn = document.getElementById('start-btn');
+                if (startBtn) {
+                    startBtn.innerHTML = '<i class="fas fa-play"></i>';
+                    startBtn.disabled = false;
+                }
             }
-        }, 500);
+        }, 500); // 保持500ms检查间隔，但增加超时机制
         
     } catch (e) {
         updateConnectionStatus('连接失败', '无法建立WebRTC连接');
@@ -873,7 +906,15 @@ const api = {
     
     // 新增：RAG聊天API
     ragChat: (query) => api.fetch('/rag/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({query}) }),
-    setRagMode: (use_rag) => api.fetch('/config/rag_mode', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({use_rag}) })
+    setRagMode: (use_rag) => api.fetch('/config/rag_mode', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({use_rag}) }),
+
+    // 新增：LLM管理API
+    getLlmProviders: () => api.fetch('/llm/providers').then(res => res.json()),
+    switchLlmProvider: (provider) => api.fetch('/llm/switch', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({provider}) }).then(res => res.json()),
+    testLlm: (query = 'Hello, please respond with a simple greeting.') => api.fetch('/llm/test', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({query}) }).then(res => res.json()),
+    
+    // 新增：会话管理API
+    closeSession: (sessionId) => api.fetch('/session/close', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ sessionid: sessionId }) })
 };
 
 // WebRTC连接状态监听
@@ -891,29 +932,46 @@ function setupWebRTCListeners() {
     }
 }
 
-// 新增：连接状态变化处理
+// 新增：连接状态变化处理 - 移除自动断开逻辑
 function handleConnectionStateChange() {
     if (!pc) return;
     console.log(`WebRTC连接状态变更: ${pc.connectionState}`);
     
     switch (pc.connectionState) {
+        case 'connecting':
+            updateConnectionStatus('连接中', '正在建立连接...');
+            break;
         case 'connected':
             if (state.isReconnecting) {
                 showNotification('WebRTC连接已恢复');
                 updateConnectionStatus('已连接', '语音助手已就绪');
+                state.isReconnecting = false;
+                state.reconnectAttempts = 0;
+            } else {
+                updateConnectionStatus('已连接', '语音助手已就绪');
             }
-            state.isReconnecting = false;
-            state.reconnectAttempts = 0;
+            state.isConnected = true;
+            startHeartbeat(); // 连接成功后开始心跳
             break;
         case 'disconnected':
-            if (!state.isReconnecting) {
-                handleDisconnect();
-            }
+            console.log('WebRTC连接断开，系统保留会话等待重连或用户操作...');
+            updateConnectionStatus('连接断开', '系统保留会话5分钟，可手动重连');
+            showNotification('连接断开，系统保留会话5分钟，可重新点击开始按钮', true);
+            state.isConnected = false;
+            // 不再自动处理，等待用户手动操作
             break;
         case 'failed':
-            showNotification('连接彻底失败，请手动重新连接');
-            state.isReconnecting = false;
-            disconnectWebRTC();
+            console.log('WebRTC连接失败，等待用户手动重连');
+            updateConnectionStatus('连接失败', '请手动重新连接');
+            showNotification('连接失败，请点击开始按钮重新连接', true);
+            state.isConnected = false;
+            stopHeartbeat(); // 停止心跳
+            // 不再自动断开，等待用户手动操作
+            break;
+        case 'closed':
+            console.log('WebRTC连接已关闭');
+            state.isConnected = false;
+            stopHeartbeat(); // 停止心跳
             break;
         default:
             updateConnectionStatus(pc.connectionState, `连接状态: ${pc.connectionState}`);
@@ -925,45 +983,120 @@ async function tryReconnect() {
     if (!pc || !state.sessionId) return;
     
     console.log('尝试进行ICE重启...');
-    const offer = await pc.createOffer({ iceRestart: true });
-    await pc.setLocalDescription(offer);
     
-    const response = await api.reconnect({
-        sessionid: Number(state.sessionId),
-        sdp: offer.sdp,
-        type: offer.type
-    });
-    const ans = await response.json();
-    await pc.setRemoteDescription({ type: ans.type, sdp: ans.sdp });
-    console.log('ICE重启offer/answer交换完成');
+    try {
+        const offer = await pc.createOffer({ iceRestart: true });
+        await pc.setLocalDescription(offer);
+        
+        const response = await api.reconnect({
+            sessionid: Number(state.sessionId),
+            sdp: offer.sdp,
+            type: offer.type
+        });
+        
+        if (!response.ok) {
+            throw new Error(`重连请求失败: ${response.status}`);
+        }
+        
+        const ans = await response.json();
+        await pc.setRemoteDescription({ type: ans.type, sdp: ans.sdp });
+        console.log('ICE重启offer/answer交换完成');
+        
+    } catch (error) {
+        console.error('重连过程中发生错误:', error);
+        throw error;
+    }
 }
 
-// 新增：断线重连处理
+// 优化：断线重连处理，移除激进重连 - 改为手动重连模式
+// 注释掉自动重连逻辑，等待用户手动操作
+/*
 async function handleDisconnect() {
+    // 避免重复重连
+    if (state.isReconnecting) {
+        console.log('重连已在进行中，跳过');
+        return;
+    }
+    
     state.isReconnecting = true;
     state.reconnectAttempts = 0;
-    updateConnectionStatus('连接断开', '正在尝试重连...');
+    updateConnectionStatus('连接断开', '等待重连...');
+    
+    console.log('检测到连接断开，等待一段时间观察连接状态...');
+    
+    // 给连接一些时间自然恢复
+    await new Promise(r => setTimeout(r, 3000));
+    
+    // 检查连接是否已经自然恢复
+    if (pc && (pc.connectionState === 'connected' || pc.connectionState === 'connecting')) {
+        console.log('连接已自然恢复，取消重连');
+        state.isReconnecting = false;
+        updateConnectionStatus('已连接', '语音助手已就绪');
+        return;
+    }
 
     while (state.reconnectAttempts < state.maxReconnectAttempts && state.isReconnecting) {
         state.reconnectAttempts++;
-        showNotification(`连接断开，正在进行第 ${state.reconnectAttempts}/${state.maxReconnectAttempts} 次重连...`);
+        console.log(`开始第 ${state.reconnectAttempts}/${state.maxReconnectAttempts} 次重连尝试`);
+        updateConnectionStatus('重连中', `尝试重连 (${state.reconnectAttempts}/${state.maxReconnectAttempts})`);
+        showNotification(`正在重连 (${state.reconnectAttempts}/${state.maxReconnectAttempts})...`);
 
         try {
             await tryReconnect();
-            await new Promise(r => setTimeout(r, 4000)); // 等待4秒看连接是否恢复
+            // 等待连接状态稳定
+            await new Promise(r => setTimeout(r, 5000));
 
             if (pc && pc.connectionState === 'connected') {
-                return; // 成功，退出循环
+                console.log('重连成功！');
+                updateConnectionStatus('已连接', '连接已恢复');
+                showNotification('连接已恢复');
+                state.isReconnecting = false;
+                return;
             }
         } catch (error) {
             console.error(`重连尝试 ${state.reconnectAttempts} 失败:`, error);
-            await new Promise(r => setTimeout(r, 2000)); // 失败后等待2秒
+            // 递增等待时间，避免过于频繁的重连
+            await new Promise(r => setTimeout(r, 3000 * state.reconnectAttempts));
         }
     }
 
     if (state.isReconnecting) {
         showNotification('重连失败，请手动重新连接');
         disconnectWebRTC();
+    }
+}
+*/
+
+// 心跳机制
+function startHeartbeat() {
+    if (state.heartbeatInterval) {
+        clearInterval(state.heartbeatInterval);
+    }
+    
+    state.heartbeatInterval = setInterval(async () => {
+        if (state.sessionId) {
+            try {
+                await api.sessionHeartbeat(Number(state.sessionId));
+                state.lastHeartbeat = Date.now();
+                state.heartbeatFailures = 0;
+                console.log('心跳发送成功');
+            } catch (error) {
+                state.heartbeatFailures++;
+                console.error(`心跳失败 (${state.heartbeatFailures}/${state.maxHeartbeatFailures}):`, error);
+                
+                if (state.heartbeatFailures >= state.maxHeartbeatFailures) {
+                    console.warn('心跳连续失败，可能需要重连');
+                    showNotification('连接不稳定，正在检查...', true);
+                }
+            }
+        }
+    }, 30000); // 每30秒发送一次心跳
+}
+
+function stopHeartbeat() {
+    if (state.heartbeatInterval) {
+        clearInterval(state.heartbeatInterval);
+        state.heartbeatInterval = null;
     }
 }
 
@@ -1087,6 +1220,45 @@ async function handleDeleteFishttsVoice() {
         } catch (e) {
             console.error('音源删除失败:', e);
         }
+    }
+}
+
+// 新增：LLM管理功能函数
+async function loadLlmProviders() {
+    try {
+        const data = await api.getLlmProviders();
+        llmProviderSelect.value = data.current_provider;
+        llmStatus.textContent = `当前: ${data.current_provider} (${data.client_info.model || 'N/A'})`;
+    } catch (error) {
+        console.error("加载LLM提供商失败:", error);
+        llmStatus.textContent = '加载LLM状态失败';
+    }
+}
+
+async function handleSwitchLlm() {
+    const selectedProvider = llmProviderSelect.value;
+    try {
+        const result = await api.switchLlmProvider(selectedProvider);
+        showNotification(`LLM已切换到 ${result.current_provider}`);
+        llmStatus.textContent = `当前: ${result.current_provider} (${result.client_info.model || 'N/A'})`;
+    } catch (error) {
+        console.error("切换LLM失败:", error);
+        showNotification("切换LLM失败", true);
+    }
+}
+
+async function handleTestLlm() {
+    try {
+        showNotification('正在测试LLM连接...');
+        const result = await api.testLlm();
+        if (result.success) {
+            showNotification(`LLM测试成功 (${result.provider})`);
+        } else {
+            showNotification(`LLM测试失败: ${result.error}`, true);
+        }
+    } catch (error) {
+        console.error("测试LLM失败:", error);
+        showNotification("测试LLM失败", true);
     }
 }
 
@@ -1275,6 +1447,7 @@ function initializePage() {
     loadKnowledgeBasesToInstant();
     loadFishttsVoices(); // 加载完整的FishTTS数据
     loadAvatars(); // 加载数字人数据
+    loadLlmProviders(); // 加载LLM提供商数据
     
     // 新增：设置同步事件监听器
     setupSyncEventListeners();
@@ -1338,6 +1511,11 @@ document.addEventListener('visibilitychange', () => {
 uploadVoiceBtn.addEventListener('click', handleUploadFishttsVoice);
 deleteVoiceBtn.addEventListener('click', handleDeleteFishttsVoice);
 refreshVoiceBtn.addEventListener('click', loadFishttsVoices);
+
+// 新增：绑定LLM相关事件
+switchLlmBtn.addEventListener('click', handleSwitchLlm);
+testLlmBtn.addEventListener('click', handleTestLlm);
+refreshLlmBtn.addEventListener('click', loadLlmProviders);
 
 // 新增：绑定数字人管理事件
 createAvatarBtn.addEventListener('click', handleCreateAvatar);

@@ -199,6 +199,27 @@
         
         <div class="settings-section">
             <div class="section-header">
+                <h3>LLM 设置</h3>
+                <div class="section-actions">
+                    <button class="action-btn" id="switch-llm-btn">切换</button>
+                    <button class="action-btn" id="test-llm-btn">测试</button>
+                    <button class="action-btn" id="refresh-llm-btn">刷新</button>
+                </div>
+            </div>
+            <div class="settings-content">
+                <div class="settings-item">
+                    <label for="llm-provider-select">LLM 提供商</label>
+                    <select id="llm-provider-select">
+                        <option value="ollama">Ollama</option>
+                        <option value="deepseek">DeepSeek</option>
+                    </select>
+                </div>
+                <div id="llm-status" style="font-size: 12px; color: #666; margin-top: 10px;">当前: Ollama</div>
+            </div>
+        </div>
+        
+        <div class="settings-section">
+            <div class="section-header">
                 <h3>使用说明</h3>
             </div>
             <div class="settings-content">

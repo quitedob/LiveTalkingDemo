@@ -16,7 +16,7 @@ async def setup_rag_app(app):
     在 aiohttp 应用启动时初始化 RAG 相关的实例。
     """
     logger.info("正在初始化RAG系统...")
-    rag_core = RAGCore(app['llm_client'])
+    rag_core = RAGCore(app['llm_manager'])
     app['rag_core'] = rag_core
     app['tasks'] = {}
     logger.info("RAG系统初始化完成。")

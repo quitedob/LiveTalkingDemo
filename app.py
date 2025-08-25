@@ -20,14 +20,17 @@ from api.voice_clone_api import register_voice_clone_routes # 您项目原有的
 # 新增：导入 FishTTS API 路由注册函数
 from api.fishtts_clone_api import register_fishtts_clone_routes
 # 新增：导入数字人 API 路由注册函数
-from api.avatar_api import register_avatar_routes 
+from api.avatar_api import register_avatar_routes
+# 新增：导入 LLM API 路由注册函数
+from api.llm_api import set_llm_manager
 
 # 导入模型和客户端
 from funasr import AutoModel
-from llm import LLMClient
 from logger import logger
 from ttsreal import CosyVoiceTTS
 from pkg.rag.knowledge_base import KnowledgeBase # 导入KnowledgeBase以调用预热
+# 新增：导入新的LLM管理系统
+from pkg.llm import LLMManager
 
 
 async def on_shutdown(app):
@@ -69,7 +72,7 @@ def main():
     parser.add_argument('--max_session', type=int, default=1, help="最大会话数")
     parser.add_argument('--listenport', type=int, default=8010, help="Web服务监听端口")
     parser.add_argument('--ollama-url', type=str, default='http://localhost:11434/api/chat', help="Ollama聊天API的URL")
-    parser.add_argument('--ollama-model', type=str, default='deepseek-r1:8b', help="在Ollama中使用的模型名称")
+    parser.add_argument('--ollama-model', type=str, default='gemma3:4b', help="在Ollama中使用的模型名称")
     parser.add_argument('--ollama-system-prompt', type=str, default='你的身份是数字人请你按照你的身份说话，禁止输出表情符号。/nothink', help="给Ollama模型的系统提示")
     parser.add_argument('--cert-path', default='/workspace/ssh/i.zmbc100.com_bundle.crt', help="SSL证书链文件的路径")
     parser.add_argument('--key-path', default='/workspace/ssh/i.zmbc100.com.key.noenc.pem', help="SSL私钥文件的路径")
@@ -104,9 +107,26 @@ def main():
     app['avatar'] = None
     
     # --- 3. 加载核心服务和模型 ---
-    # 加载LLM客户端
-    app['llm_client'] = LLMClient(url=opt.ollama_url, model=opt.ollama_model, system_prompt=opt.ollama_system_prompt)
-    logger.info("LLM 客户端已初始化。")
+    # 初始化新的LLM管理系统
+    llm_manager = LLMManager()
+    
+    # 注册Ollama客户端
+    llm_manager.register_ollama_client(
+        url=opt.ollama_url,
+        model=opt.ollama_model,
+        system_prompt=opt.ollama_system_prompt
+    )
+    
+    # 注册DeepSeek客户端
+    llm_manager.register_deepseek_client(
+        model="deepseek-chat",
+        system_prompt=opt.ollama_system_prompt
+    )
+    
+    # 设置全局LLM管理器
+    app['llm_manager'] = llm_manager
+    set_llm_manager(llm_manager)
+    logger.info("LLM 管理系统已初始化，支持 Ollama 和 DeepSeek 热切换。")
 
     # 加载主模型 (MuseTalk, Wav2Lip, etc.)
     if opt.model == 'musetalk':
@@ -144,6 +164,9 @@ def main():
     register_fishtts_clone_routes(app)
     # 新增：注册数字人 API 路由
     register_avatar_routes(app)
+    # 新增：注册 LLM API 路由
+    from api.llm_api import register_llm_routes
+    register_llm_routes(app)
     app.router.add_static('/', path='web') # 提供静态文件服务
     logger.info("所有API路由注册完成。")
 

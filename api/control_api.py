@@ -21,7 +21,7 @@ from pkg.avatars.session_manager import get_session_manager
 
 
 # =============== 配置区（可按需调整） ===============
-GRACE_TTL_SECONDS = 120      # 中文注释：断线状态下，会话保留的宽限期（秒）
+GRACE_TTL_SECONDS = 300      # 中文注释：断线状态下，会话保留的宽限期（秒）- 延长到5分钟
 ICE_SERVERS = [
     RTCIceServer(urls="stun:stun.miwifi.com:3478"),
     # 如需公网更稳，建议加 Google STUN 或自己的 TURN
@@ -159,14 +159,15 @@ async def _new_pc(app: web.Application, sessionid: int) -> RTCPeerConnection:
             logger.info("会话 %s 进入 disconnected，启动宽限计时 %ss", sessionid, GRACE_TTL_SECONDS)
             await _schedule_disconnect_cleanup(app, sessionid)
         elif state in ("failed", "closed"):
-            # 中文注释：失败或关闭：关闭当前 PC，但暂留 nerfreal 以便重连
+            # 中文注释：失败或关闭状态：不立即清理，给更长的宽限期等待用户手动重连
+            logger.info("会话 %s 进入 %s 状态，保留会话等待用户重连", sessionid, state)
             try:
                 if pc in pcs:
-                    await pc.close()
                     pcs.discard(pc)
-            finally:
-                # 进入宽限：允许客户端发 /reconnect 来接回会话
-                await _schedule_disconnect_cleanup(app, sessionid)
+            except Exception:
+                pass
+            # 给用户更多时间手动重连，而不是立即清理
+            await _schedule_disconnect_cleanup(app, sessionid)
 
     # 若会话存在，挂上轨道
     if sessionid in nerfreals and nerfreals[sessionid] is not None:
@@ -185,13 +186,21 @@ async def offer(request: web.Request) -> web.Response:
     app = request.app
     _ensure_runtime_buckets(app)
 
-    # 生成新的会话 id
-    sessionid = randN(6)
-
     opt = app['opt']
     model = app['model']
     avatar = app['avatar']
     nerfreals = app['nerfreals']
+
+    # 检查会话数限制
+    max_sessions = getattr(opt, 'max_session', 1)
+    if len(nerfreals) >= max_sessions:
+        logger.warning(f"已达到最大会话数限制: {max_sessions}")
+        return web.json_response({
+            "error": f"已达到最大会话数限制 ({max_sessions})"
+        }, status=429)
+
+    # 生成新的会话 id
+    sessionid = randN(6)
 
     # 中文注释：为热切换准备：获取初始 avatar_id
     initial_avatar_id = str(opt.avatar_id) if hasattr(opt, 'avatar_id') else None
@@ -199,29 +208,39 @@ async def offer(request: web.Request) -> web.Response:
     nerfreals[sessionid] = None
     logger.info('创建会话 sessionid=%d, 当前会话数=%d', sessionid, len(nerfreals))
 
-    # 构建虚拟人（避免阻塞事件循环）
-    logger.info("会话 %s: 开始构建虚拟人实例...", sessionid)
-    nerfreal = await asyncio.get_event_loop().run_in_executor(None, build_nerfreal, opt, model, avatar, sessionid)
-    logger.info("会话 %s: 虚拟人实例构建完成。", sessionid)
-    nerfreals[sessionid] = nerfreal
+    try:
+        # 构建虚拟人（避免阻塞事件循环）
+        logger.info("会话 %s: 开始构建虚拟人实例...", sessionid)
+        nerfreal = await asyncio.get_event_loop().run_in_executor(None, build_nerfreal, opt, model, avatar, sessionid)
+        logger.info("会话 %s: 虚拟人实例构建完成。", sessionid)
+        nerfreals[sessionid] = nerfreal
 
-    # 中文注释：关键：将会话登记到 SessionManager（注意使用 str 作为 key）
-    sm = get_session_manager()
-    sm.create_session(str(sessionid), initial_avatar_id)
+        # 中文注释：关键：将会话登记到 SessionManager（注意使用 str 作为 key）
+        sm = get_session_manager()
+        sm.create_session(str(sessionid), initial_avatar_id)
 
-    # 新建 PC 并挂轨
-    pc = await _new_pc(app, sessionid)
+        # 新建 PC 并挂轨
+        pc = await _new_pc(app, sessionid)
 
-    # 常规 SDP 交换
-    await pc.setRemoteDescription(offer_desc)
-    answer = await pc.createAnswer()
-    await pc.setLocalDescription(answer)
+        # 常规 SDP 交换
+        await pc.setRemoteDescription(offer_desc)
+        answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
 
-    return web.json_response({
-        "sdp": pc.localDescription.sdp,
-        "type": pc.localDescription.type,
-        "sessionid": sessionid
-    })
+        return web.json_response({
+            "sdp": pc.localDescription.sdp,
+            "type": pc.localDescription.type,
+            "sessionid": sessionid
+        })
+        
+    except Exception as e:
+        # 如果创建失败，清理资源
+        logger.error(f"创建会话 {sessionid} 失败: {e}")
+        if sessionid in nerfreals:
+            nerfreals.pop(sessionid, None)
+        sm = get_session_manager()
+        sm.close_session(str(sessionid))
+        raise
 
 
 async def reconnect(request: web.Request) -> web.Response:
@@ -348,6 +367,56 @@ async def is_speaking(request: web.Request) -> web.Response:
     return web.json_response({"code": 0, "data": speaking})
 
 
+async def close_session(request: web.Request) -> web.Response:
+    """中文注释：主动关闭会话，立即清理资源。"""
+    try:
+        params = await request.json()
+        sessionid = int(params.get('sessionid', 0))
+        
+        if not sessionid:
+            return web.json_response({"code": -1, "msg": "需要有效的 sessionid"}, status=400)
+        
+        app = request.app
+        _ensure_runtime_buckets(app)
+        
+        nerfreals = app['nerfreals']
+        pcs = app['pcs']
+        
+        # 关闭PC连接
+        session_pc = app['session_pcs'].pop(sessionid, None)
+        if session_pc:
+            try:
+                if session_pc in pcs:
+                    await session_pc.close()
+                    pcs.discard(session_pc)
+            except Exception as e:
+                logger.warning(f"关闭PC连接时出错: {e}")
+        
+        # 清理会话管理器
+        sm = get_session_manager()
+        sm.close_session(str(sessionid))
+        
+        # 清理虚拟人实例
+        if sessionid in nerfreals:
+            session_to_close = nerfreals.pop(sessionid, None)
+            if session_to_close:
+                try:
+                    del session_to_close
+                except Exception:
+                    pass
+                gc.collect()
+        
+        # 清理定时任务
+        _clear_deadline(app, sessionid)
+        
+        logger.info(f"会话 {sessionid} 已主动关闭")
+        return web.json_response({"code": 0, "msg": "会话已关闭"})
+        
+    except Exception as e:
+        logger.exception('close_session 接口异常:')
+        return web.json_response({"code": -1, "msg": str(e)}, status=500)
+
+
 def register_control_routes(app: web.Application):
     """
     中文注释：注册路由。新增 /reconnect 与 /session/heartbeat
@@ -355,6 +424,7 @@ def register_control_routes(app: web.Application):
     app.router.add_post("/offer", offer)
     app.router.add_post("/reconnect", reconnect)              # 新增：重连/ICE 重启
     app.router.add_post("/session/heartbeat", session_heartbeat)  # 新增：心跳续期
+    app.router.add_post("/session/close", close_session)      # 新增：主动关闭会话
     app.router.add_post("/interrupt_talk", interrupt_talk)
     app.router.add_post("/set_audiotype", set_audiotype)
     app.router.add_post("/record", record)

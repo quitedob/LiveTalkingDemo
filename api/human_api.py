@@ -81,7 +81,7 @@ async def human(request):
         sessionid = int(params.get('sessionid', 0))
         
         nerfreals = request.app['nerfreals']
-        llm_client = request.app['llm_client']
+        llm_manager = request.app['llm_manager']
         rag_core = request.app['rag_core']
 
         if not sessionid or sessionid not in nerfreals:
@@ -105,7 +105,7 @@ async def human(request):
                     rag_core.set_current_kb(kb_name)
                     llm_stream = rag_core.get_response(input_text)
                 else:
-                    llm_stream = llm_client.ask(input_text)
+                    llm_stream = llm_manager.ask(input_text)
                 
                 # 收集完整的LLM响应用于流式传输
                 full_response = ""
@@ -120,7 +120,7 @@ async def human(request):
                 await response.write(final_data.encode('utf-8'))
                 
                 # 同时驱动数字人
-                sentence_stream = _llm_to_sentence_stream(llm_client.ask(input_text) if not use_rag else rag_core.get_response(input_text))
+                sentence_stream = _llm_to_sentence_stream(llm_manager.ask(input_text) if not use_rag else rag_core.get_response(input_text))
                 
                 if sessionid in nerfreals:
                     # ======================================================
@@ -184,7 +184,7 @@ async def audio_chat(request):
         
         nerfreals = request.app['nerfreals']
         asr_model = request.app['asr_model']
-        llm_client = request.app['llm_client']
+        llm_manager = request.app['llm_manager']
         rag_core = request.app['rag_core']
 
         if not sessionid or sessionid not in nerfreals:
@@ -235,7 +235,7 @@ async def audio_chat(request):
                     rag_core.set_current_kb(kb_name)
                     llm_stream = rag_core.get_response(text)
                 else:
-                    llm_stream = llm_client.ask(text)
+                    llm_stream = llm_manager.ask(text)
                 
                 # 收集完整的LLM响应用于流式传输
                 full_response = ""
@@ -250,7 +250,7 @@ async def audio_chat(request):
                 await response.write(final_data.encode('utf-8'))
                 
                 # 同时驱动数字人
-                sentence_stream = _llm_to_sentence_stream(llm_client.ask(text) if not use_rag else rag_core.get_response(text))
+                sentence_stream = _llm_to_sentence_stream(llm_manager.ask(text) if not use_rag else rag_core.get_response(text))
                 
                 if sessionid in nerfreals:
                     # ======================================================

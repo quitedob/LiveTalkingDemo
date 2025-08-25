@@ -38,7 +38,8 @@ function negotiate() {
         document.getElementById('sessionid').value = answer.sessionid
         return pc.setRemoteDescription(answer);
     }).catch((e) => {
-        alert(e);
+        console.error('WebRTC协商失败:', e);
+        // 不要弹出alert，只记录错误
     });
 }
 
@@ -60,6 +61,43 @@ function start() {
         } else {
             document.getElementById('audio').srcObject = evt.streams[0];
         }
+    });
+
+    // 添加连接状态监听
+    pc.addEventListener('connectionstatechange', () => {
+        console.log('WebRTC连接状态:', pc.connectionState);
+        
+        // 更新连接状态显示
+        const connectionStatus = document.getElementById('connection-status');
+        if (connectionStatus) {
+            connectionStatus.textContent = `WebRTC状态: ${pc.connectionState}`;
+        }
+        
+        // 处理连接状态变化 - 移除自动断开逻辑
+        switch (pc.connectionState) {
+            case 'connecting':
+                console.log('WebRTC正在连接...');
+                break;
+            case 'connected':
+                console.log('WebRTC连接已建立');
+                break;
+            case 'disconnected':
+                console.log('WebRTC连接断开，请手动重连或等待自动恢复...');
+                // 不再自动处理，等待用户手动操作或连接自然恢复
+                break;
+            case 'failed':
+                console.log('WebRTC连接失败，请手动重连');
+                // 不再自动处理，等待用户手动操作
+                break;
+            case 'closed':
+                console.log('WebRTC连接已关闭');
+                break;
+        }
+    });
+
+    // 添加ICE连接状态监听
+    pc.addEventListener('iceconnectionstatechange', () => {
+        console.log('ICE连接状态:', pc.iceConnectionState);
     });
 
     document.getElementById('start').style.display = 'none';
